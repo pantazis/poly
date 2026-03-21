@@ -1,0 +1,1093 @@
+0:00 - Today I'm going to show you step by step how to use clawed code in order to build polyarket bots. Uh you can see I've been working on this bot here, the fiveminute
+0:07 - markets. Fiveminute markets are pretty dangerous here. Um that being said, it's like 2500x leverage, so it's a little dangerous here. Um I ran out of cash as you can see. I take $10 position size,
+0:17 - so I do need to claim some of this cash here. Uh this is a nice win. Uh 5:00 p.m. Okay, I was actually out at dinner
+0:23 - 376%. 2:20 p.m. What was I doing at 2:20 yesterday? I was probably in the crib somewhere. No, no, I was working out.
+0:32 - 6:15 I was at dinner. 233% 233% 212%
+0:36 - 213% 186% 186%. So, this has been cooking and we'll see if it keeps
+0:43 - working. Uh, this is just one idea. I'll explain how you can come up with your own ideas, how you can test out your own bots, how to use cloud code if you don't
+0:50 - know how to code in order to do all of this. I'll explain all the secrets here today and this will be one of my final trainings here. So, if you want to make
+0:58 - sure to stick around, uh, I don't teach this very much. And today I will be teaching it while getting a bunch done because you can see I have six clog
+1:06 - codes here and I've got a few ideas that we were working on yesterday that I'll show you for sure. But, um, at the same time, uh, I will be trying to teach some of this stuff. So, uh, if you do log in,
+1:17 - you'll get the road map, you'll get the API key for 24 hours, you'll get the Mundav app as well. Let me go ahead and claim this so I can go ahead and proceed
+1:26 - with this bot. So, if you look down here, there is a bot that I stopped last night. Yep. Leak lick stink bot. Okay,
+1:37 - perfect. And I built this all live here with you. That's the fun thing. So, you can see I now have 476 in my account.
+1:44 - And what I'm actually going to be doing today is doing some research. So, I'll talk about the process that I follow
+1:52 - here. I'll teach you all the three secrets, whatever, about how to actually automate your trading with cloud code.
+1:57 - Um, but one of those secrets is how to come up with ideas. And I'll be showing you how to come up with ideas um by kind
+2:04 - of just um messing around on these markets here today. As you can see, I built this bot that's a easy py, meaning
+2:12 - I'll be able to enter and exit position super easily. And ideally, I just keep building my brain out with new ideas
+2:19 - because I have this section here where this is Claude Code Opus 4.6. And essentially, I just send her new ideas
+2:27 - and I put it on a list of ideas. But this might not be making sense to you so far if you're just trying to get started. But you know that in order to
+2:34 - build a bot, right, you have to have an idea, an idea to trade, a trading system, right? So, in the three secret secrets today, I will show you how to
+2:43 - pretty much steal those ideas from your competition. It's ethical, of course,
+2:47 - because everything there's nothing new here in trading. Uh, but by the end of this, you'll have unlimited trading strategies that you can automate for the
+2:54 - rest of your life. Uh, and then secret number two, what I'm going to do is I'm going to show you how to see if those strategies actually work in the past.
+3:02 - see the like have X-ray goggles on whether that strategy you came up with that I taught you in secret number one how to find strategies if it actually
+3:10 - works like a lot of people talk about this works that works like we know if things work as quants as automated
+3:18 - traders we know if they work or not all the other hand traders they don't know and then secret number three I'm going to show you how to automate your
+3:26 - trading how to get your trading bot actually live so they can trade for you now the cool thing is is is this is going to be for multiple exchanges.
+3:35 - While today, yes, I'm showing a lot of poly market, uh this applies to really any market. So, if you're trading crypto, futures, stocks, options, it doesn't matter. A market is a market.
+3:46 - They all kind of move the same. There's some fine details. You know, if you go over to Forex, but if you look at like stocks and futures and crypto, these are
+3:54 - like trending markets, right? Forex is up down mean reverting market. But other than that, all of these exchanges have a way to connect and build bots for them.
+4:03 - So, if you can understand these three concepts today, then you're going to go ahead and be way, way, way ahead of the competition when it comes to trading in
+4:12 - general because, you know, we all got into trading to get our emotions back, right? Get our time back, remove our emotions.
+4:21 - We don't want to get our emotions back.
+4:23 - Silly guy, dude. Silly guy. Get your emotions back. Okay. can't even speak.
+4:28 - But I think this is going to be very representative of how I'm just a regular guy and I can't even speak correctly. My brain goes too fast or it goes too slow.
+4:37 - I got held back in seventh grade. But we all got into training to get our time back, right?
+4:44 - Of course. But that's the crazy thing about trading is we find a way to run it up with trading,
+4:51 - but then we stare at the charts all day.
+4:53 - So, it's it's like you're you're actually working a 9 to5. Most traders are because they'll clock in at 9:00 and be like, "Okay, I need to trade this all
+5:01 - day. I need to stare at the charts all day. Boom, boom, boom, boom, boom,
+5:04 - boom." And just to lose. So, I don't know about you, but I got into trading to get my time back.
+5:10 - And then I found myself just staring at these charts all day. So, I was just like, um,
+5:19 - I don't really know if this is what I was going for,
+5:25 - you know, like I I I was I got into trading so I could get my time back,
+5:30 - make a bunch of money, and get my time back. And I just stare at charts all day. When I was a hand trader, that's what I would do. I just stare at charts all day.
+5:40 - Well, by the end of this, I want to make sure that you don't have to stare at these charts. You're not going to see me looking at these charts much. Uh, if you've been at my Zoom, my stream before, you don't see me looking at
+5:47 - these charts cuz I don't need to. I have robots looking at the charts in the background.
+5:54 - I got robots in the cloud trading for me 24/7, 365 looking at the charts for me.
+6:02 - And like I said, if you stick around for the entire time, I'll give you the full road map. I'll give you the API AI.
+6:07 - There's a we're going to have a Q&A session at the end, so don't worry if you have questions. Essentially, I want to I want to teach you everything you need to know about automated trading,
+6:14 - building trading bots for Poly Market or any other exchange. I told you the three secrets I will show you. But before we get into anything, I need to tell you
+6:22 - why I'm even standing here telling you this. Um,
+6:28 - how I even got here, dude.
+6:33 - I'm a big I'm a big believer from my experiences of learning, you know, like if I don't know something, I just need
+6:40 - to go read a book on it. I need to learn it. I need to learn it. I'm a big learner. Learn, baby, learn. So you can earn, baby, earn. That's what Martin Luther King Jr. said. Learn, baby, learn so you can earn, baby, earn.
+6:55 - But I I've totally been in the situation where you are like I'm a complete stranger, right?
+7:02 - You don't know me. I don't know you. But I kind of know something about you.
+7:08 - You got into this Zoom stream somehow someway.
+7:14 - So I kind of know that you're you're similar to I. You're persistent. You're a researcher. You're a data dog.
+7:23 - But at the end of the day, we're strangers, right? How do I even get here?
+7:31 - How did you even get here? Be curious. Let me know in the chat.
+7:38 - But my journey started a long, long time ago.
+7:45 - I'm 36 now. I didn't learn any of this till I was 30. I know a lot of people are like, "Damn, I'm 22, 24. I'm too late. I'm cooked."
+7:56 - At 21, I was a I was a college basketball player.
+8:01 - And while all my teammates, all my colleagues in college, they were lining up internships. I'm just kind of
+8:09 - rebellious, dude. They're all lining up their internships cuz we we were required to do that, right? We were required to have an internship.
+8:21 - So, I'm like, "Nah, I'm not really trying to work a job, dude."
+8:26 - One day I was kind of like you just surfing the internet. I found something interesting. It was about It was about
+8:33 - what 20 2011. Yeah, 2011. This guy was talking about building iPhone apps without knowing how to code. And I was like what?
+8:44 - I need to know that.
+8:48 - I need to know that. Being able to build iPhone apps in 2011 without knowing how to code was the sickest thing I've ever heard of. But I had no idea how to get
+8:56 - started. What I did know is me and all of my teammates,
+9:02 - all we did was play Temple Run. All the bus rides, all the flights, all we did was play Temple Run. Every road trip,
+9:09 - every bus ride, the whole team is playing this game. I don't know if you guys remember it. Throw one in the chat if you remember Temple Run.
+9:18 - Felix does. I love that game. Josh Andrews iPhone.
+9:23 - Okay. So, we were all we all played that game. We were all like kind of competing with each other. You know, we're college athletes, teammates.
+9:32 - Of course, we're going to be competing on the game as well.
+9:38 - We were addicted, dude. But I seen this dude on the internet talking about building an iPhone app without knowing how to code.
+9:47 - So, I'm like, we're all playing this game. This guy supposedly knows how to build apps without knowing how to code.
+9:57 - I don't know how to code. Yeah.
+10:02 - Okay. Let me go see what he's talking about. You know, I'm a college athlete.
+10:06 - I don't have any money. Any money. Any money. And I decide to watch one of his videos.
+10:16 - It ends up in a kind of like a webinar and
+10:22 - he's like, "I'll teach you everything if you pay me $2,000."
+10:30 - And I just I was gutted, bro. I didn't have 2K. I'm a college kid.
+10:38 - I'm a college kid. I don't have any money. But I saw the demand. I saw the demand.
+10:45 - We were all, you know, we're all athletes and we're competing against each other in order to play this Temple Run game. So, I'm like, [ __ ] I need to
+10:54 - figure this out. I need to figure this out. So, I I scred up some credit. I used a credit card.
+11:01 - I started telling all my teammates, "Yo, I'm I'm skipping this internship."
+11:05 - Somehow, I was able to finagle, you know, I'm kind of a rebel. I was able to finagle the the office. I said, "Hey,
+11:10 - instead of an internship, can I just go ahead and build an app?"
+11:14 - 2011. So they're like, "Yeah, that's actually kind of fire. It's like running a business." So
+11:21 - I bought the course or whatever from Homeboy for 2K on a credit card. And then it was actually it was worth it to me because I was like, "Damn, I don't have to do an internship now." So yeah,
+11:30 - I'm down 2K,
+11:32 - but I don't have to do an internship now. And I have a chance to build this Temple Run game. I'm telling all my friends after that,
+11:40 - I'm I'm locked in. I'm locked in. I watched every single video very quickly and then I started to execute what they
+11:47 - told me. Long story short, it was go hire developers on Upwork. I started telling everybody
+11:54 - that I'm building the sickest game and I built it for it took months. It took months. So, it took 2K in order to learn
+12:01 - the stuff and it it's embarrassing, but I spent $15,000 on that credit. Same credit card. I don't know how. somewhere in Missouri. They gave me a credit card
+12:10 - for 18K and I was able to run it up. I was able to build this game and I was hyping it up for months. Months, dude.
+12:16 - Months. We're still all playing Temple Run. I'm like, "Yeah, it's about to drop. It's about to drop." The course taught me exactly how to build the app.
+12:26 - And then I went ahead and built my own game. I released it to the team first.
+12:37 - They roasted me, dude. They roasted They like, "This is trash. Trash, dude. Moon, this is a trash game.
+12:45 - I was heartbroken, bro.
+12:48 - I just spent two G's to learn how to build it and then 15 G's to build it."
+12:55 - And they said it was trash. And what was worse is I put it on the app store, I got like a thousand downloads. The market said it was trash, too.
+13:04 - gutted.
+13:09 - But that course, it didn't teach me how to build just a bad game. It gave me the architecture,
+13:15 - gave me the core code, the framework underneath. And once I got past the embarrassment and actually looked at what I had,
+13:23 - I was like, you know, I built a game. I built a game. Nobody else is on the app store, first off. Nobody I know at least.
+13:32 - and I ship the game. While an embarrassment, yeah, nobody else is doing this. I've got the architecture.
+13:38 - I've got the plan now. What can I do with this? I don't have any more money. I could probably scr up a,000 bucks.
+13:47 - I I had the architecture. I had the plan. And I had a game in the app store. Perfect trash game.
+13:55 - I started thinking and based off of that architecture the guy, you know, sold me,
+14:00 - whatever, I was able to build my own little business model. Yeah. My own little
+14:08 - business model. And I took that failed game. I took the code of that game and I started to apply it to all the other
+14:15 - themes. Okay. I don't know if you guys remember like u there's so many themes back in the day.
+14:22 - viral hits like Gangnum Style, all these types of weird things, you know. This was what, 2011? 2011. Yeah, 2011, 2012.
+14:33 - Down bad. Everybody says my game's trash, but I got the code for it and I've got the road map in order to build unlimited of them. I just don't have any
+14:41 - more money. I just don't have any more money. So, long story short, I built a business model that uh kind of took over
+14:48 - the app store and um I was able to I was able to apply themes to that game code. So, if you can
+14:56 - imagine, you have a a store, you have a McDonald's, and then I was able to build Burger King off of it, and I was able to build Wendy's off of it, the core like
+15:05 - system, right, the core code, and then just make different themes to it. And it absolutely printed for the next five years. So, I took that knowledge from some random dude on the internet.
+15:17 - It helped me accelerate build the app very quickly. 6 months instead of a couple years. Okay, perfect.
+15:24 - Yes, I didn't end up making money off that first app. No, but I did something better. I built a business model
+15:33 - that I was able to ride for the next five, six years. And I mean really until I made the shift here to algorithmic trading.
+15:45 - But $2,000 ran up to seven figures because the knowledge
+15:54 - was purchased from somebody else that knew he he was ahead of me.
+15:59 - So I had I had to figure this out and I had two options, you know, either buy it from him and run it up or just
+16:06 - try to figure out myself. I had no idea where to start. So I need you to hear that soon.
+16:15 - I'm not up here selling you something I wouldn't buy myself. I was you broke,
+16:20 - skeptical, putting money into things that are just stupid, like wasting money on random.
+16:29 - But finally once I I took a chance and stopped chasing everything. I found a business model. I invested in that
+16:37 - business model. It got me two years ahead. I found my own mistakes. I found my own path and then I ran it up.
+16:48 - I ran it up.
+16:54 - That course was my foundation to why any of us are here. And let me tell you why.
+17:01 - because after doing well across apps and that led me to like e-commerce that led me to Facebook ads that led me to
+17:09 - multiple business models that as a non-technical scared to code not I'm I can't code I'm not a coding guy yada
+17:15 - yada as that person once I had some cash and I started trading it okay that's
+17:23 - where things got scary dude I learned about trading Okay.
+17:30 - Prices go up and down. You learn about BitMax. You learn about FAX. You learn about all of these leverage platforms.
+17:37 - You can get leverage. You mean every dollar I put in, I could have $50? Yeah,
+17:44 - that sounds great. And I've got some cash now. Let me trade that.
+17:51 - Years of trading, what I realized is this is pretty random. But the thing that's not random
+17:58 - is your emotion.
+18:04 - Every single day you have emotions in these charts and they're painted in these charts. You can see it like people run like why are these bars going up like this? It's because people are
+18:11 - fomoing in and then they get wrecked and they sell down here and then or they short here and they get wrecked. It's just a bunch of liquidations happening
+18:20 - over and over and over again. It's just that's what it is. That's what these markets are. just kill everybody. Take everybody's money.
+18:29 - So, if you're using leverage,
+18:32 - you're going down the path I was going down. Just overtrading, removing stop-
+18:36 - losses, removing take profits. It's not a good path, dude. You're going to lose all your money. I don't know how many times I woke up to those liquidation emails.
+18:46 - But once I knew I had to automate my trading because I met this billion dollar guy, I'll tell you about later. I knew I had to learn to code. I was
+18:55 - scared to learn how to code this entire time building those apps.
+19:00 - I knew I had to learn to code because I just went through a decade of iterating with developers on Upwork, probably spending a million dollars on developers, wasting not wasting time,
+19:09 - but like I if I knew how to code back then, I'd be I'd be much further along.
+19:14 - And I knew that iterating on an algo,
+19:19 - a trading bot, building a trading bot was going to take a lot of time, a lot of iterations. So you can imagine, you know, it cost me 15K for an app,
+19:26 - probably would have cost me 15K for my first bot. And then to iterate another 2K, and then another bot, another 10K,
+19:33 - and then another bot, another 10K. So that just I knew this was going to be a long game. I knew it was going to be hard. Like this is Jim Simons ran up a
+19:41 - net worth of $31 billion off of the industry that I'm exposing here today.
+19:46 - I'm teaching you everything you need to know so you can get started at the end of the day. $31 billion. Everything he's doing, I'm doing. I'm replicating. I'm
+19:54 - chasing Jim Simons. $31 billion. I knew this was going to take a lot of either money if you're going to hire developers or finally learn how to code. Scared,
+20:03 - dude. Like there's no difference between you and I. There's no difference between me and that developer. I believe in you because I was able to figure out how to
+20:11 - code and you don't even have to really know how to code anymore. You have AI.
+20:15 - So, I'm going to be showing you today how to use Cloud Code for this entire process.
+20:22 - And if you're anything like me, you've been liquidated dozens of times and you've lost a ton of money due to emotions.
+20:30 - It's not your fault, dude. It's not your fault.
+20:34 - These exchanges, they're set up as casinos.
+20:38 - Red, green, flashing lights. Speed you up. Just so you have more leverage.
+20:46 - Add more leverage. Take more trades. More leverage. More trades.
+20:58 - Yo, can somebody let me know? Have you been liquidated due to emotions? Throw one in the chat if you have. Do do you have you been liquidated due to your
+21:06 - emotions? is like, did you move a take profit, a stop loss? Of course. Just curious. I'm just curious like where are you guys at so many times? Okay. So,
+21:19 - no fun, dude. It's no fun every time. Chimpy says,
+21:27 - "Damn, I got my bots here." And like I said,
+21:37 - I'm going to try to teach you this, but I also got a lot to do, dude. Still got a lot to do.
+21:48 - Damn, Shiva Enu. That was your biggest war.
+22:01 - I don't know if if you're anything like me, if you're feeling like trading has kind of just been like a waste of time, almost waste of life, I feel you, dude.
+22:10 - There there's no reason to trade by hand.
+22:13 - And it's for the reason you think. You know, you think Wall Street has some secret sauce and they can see your positions. They're moving towards your stop losses,
+22:20 - take profits. Of course, they are. Of course they are. And Wall Street's all boys club. They're going to pretend like you can't become an automated trader.
+22:28 - You have to be part of their firm or you got to do this or that. You got to go to Stanford.
+22:35 - But I believe in you because you found me somehow. You research. You're researcher. You're a data dog.
+22:40 - Even if you're working from your bedroom, it doesn't matter. Me, too.
+22:44 - I'm blessed to have a spare bedroom, but I ran it up in my bedroom, right next to my bed. So, if your bed is right behind you, much love to you, dude. You're on
+22:53 - your way. You could do anything any other man can do. Okay, Jim Simons, this is just a man that smoked 82 cigarettes
+23:01 - a day. Nothing different between you and him.
+23:05 - And I'm going to leak every single secret you need to know. You're going to have a full plan by the end of this.
+23:13 - And I didn't go to school for this. I'm not a mathematician. I'm not a scientist. I didn't go to school for coding. I was a dumb jock, dude. I was a
+23:22 - dumb jock. That's literally what if you if you ask anybody here, I'm just a dumb jock. Just a dumb jock. I grew up an athlete. You know, us athletes, dude.
+23:31 - We're just numb nuts.
+23:35 - It's kind of funny. It's kind of funny because, you know, in college they they put me in or they put us all in two hours of tutor,
+23:44 - two to three hours of study hall.
+23:47 - They have people checking in on all our classes and I don't know, it's it's a lot of a lot of babysitting because, you know,
+23:57 - athletes have a bad rap. We're just we're just dumb athletes, yada yada. So,
+24:04 - and you probably didn't get held back in seventh grade. But dude, I can see your positions here.
+24:10 - So, if you ever thought that Wall Street is hunting you, they are hunting you. They can see your positions as well.
+24:15 - They've been able to see your positions for decades. I've only been able to see your positions for like a year. And now,
+24:19 - if you're in the chat here, you do have app access to this. So, much love to you. Have fun with that.
+24:30 - I think this is the ultimate opportunity in 2026 because, you know, you look at Jane Street, you look at Jim Simons, you look at Citadel, Renaissance, they're
+24:39 - all automated traders. And I was watching a Stanford professor on YouTube. I didn't get into Stanford because I'm kind of a nerd and I watched
+24:47 - it on YouTube. Whatever. Like I'm a you know, you call me a jock. I'm actually a nerd.
+24:56 - But he was saying when you're in emotional state, you literally cannot think logically. He said, think back to a time that you got in a fight with a
+25:04 - friend or a spouse, whoever. You probably said some things you didn't really mean, right?
+25:10 - That's because the brain, it can't think logically when in an emotional state.
+25:19 - So, I'm sure you've been in emotional state before trading, right? I mean, you guys already said that and like, damn, look back like I should have taken that trade. Of course.
+25:31 - So to loop back to what the Stanford guy said,
+25:34 - he said, "You cannot think logically when you're in emotional state."
+25:40 - So when you're trading and you're in an emotional state, you're not thinking logically, but you're using all of your money and if you're not trading logically,
+25:52 - you're going to lose it all. Right? Can you explain this? Can you explain this short and concisely about the amygdala and why the emotions or how the emotions
+25:59 - trigger before logical brain and how that relates to trading? Real short, concise.
+26:11 - I'm sure you've done something or said something or traded something because you're in an emotional state, right?
+26:19 - Listen, dude. your dreams of trading 24/7 with bots without having to stare at the screen.
+26:28 - It's not just possible.
+26:30 - It is your future. I'm living it. Your past blowups are not your fault. You know, the exchanges are pretty much
+26:39 - rigged to trigger emotions and drain you. All Wall Street guys, they're going to say, "Hey, you can't learn this.
+26:45 - You're not smart enough. You didn't go to elite school." yada yada. AI can do everything they can do but much better.
+26:52 - That's the thing. Code is a great equalizer, but AI makes code available to anybody.
+27:02 - AI does all the heavy lifting. So, you don't have to be scared like I was about coding cuz AI, you're going to watch me code today. I'm not going to code. I'm just going to talk and it's going to
+27:10 - code for me. All this stuff on the screen, all of these data sources here,
+27:15 - dude. I got a CVD scanner looking at tick data. I got I can see everybody's liquidations. I can see the liquidation
+27:22 - stream. Dude, all of this I just told the AI to code it for me. So, you're in actually a much better position than I was when I got started.
+27:33 - What What do they say here about the amydala? The amigdala hijack in trading.
+27:38 - Your brain processes threats through two paths. First path, sensory input, amydala, which is your emotional brain.
+27:45 - The amydala is your emotional brain.
+27:47 - It's 12 milliseconds to process threats from your amydala, your emotional brain.
+27:52 - 12 milliseconds. But the slow path is your prefrontal cortex, which is your logical brain. It takes 500 milliseconds. So 12 milliseconds for
+28:00 - your emotions, 500 milliseconds for your logic.
+28:05 - The amygdala fires 40x faster than your irrational brain.
+28:12 - This was an evolutionary advantage. You needed to jump before fully analyzing if that shape was a snake. But in trading,
+28:21 - this is a disaster.
+28:23 - When you see a red candle or a losing position, your amydala triggers fight or flight before your logical brain can assess the situation.
+28:32 - This is why you panic sell at the bottom and you revenge trade after a loss. You
+28:40 - fomo buy a spike and you freeze so you don't you don't cut your losers. It's just this happens
+28:47 - over and over again, right? By the time your prefrontal cortex catches up with wait, this is just a normal volatility.
+28:56 - You've already clicked the button. So the fix is systems and rules. A bot doesn't have an amygdala. Predefined
+29:03 - entries, exits, and positions remove the emotional brain from the equation entirely, which is the whole point of algorithmic trading. Mundave,
+29:15 - look, I hit a I hit a wall hard, dude. After my last liquidation,
+29:19 - I was staring I was staring at a a dark wall for hours. Just sad.
+29:25 - Just sad. I was done. But I I felt like I just like I'm not going to trade anymore. Just done trading. Just done.
+29:32 - This sucks.
+29:34 - Have you guys ever thought about quitting?
+29:37 - Cuz I know I I sure was at the brink of quitting trading forever. Just too many emotions, too much time loss.
+29:47 - But then it hit me. Dude,
+29:50 - there's a better way to trade. I just need to stop being a human. You know about the amigdula. I just need to remove my amydala. Like, yeah, of course. Just remove the emotions.
+29:59 - Robots, they don't flinch.
+30:03 - Wouldn't it feel pretty good to never have to fight your brain again? I mean, your brain is here to keep you alive. Your amigula is here to keep you alive.
+30:11 - 12 milliseconds versus 500 milliseconds. Yeah, this is here to keep you alive.
+30:16 - But applying it to trading, it does not keep your money alive.
+30:24 - Now, if you're a complete beginner and you've never coded before, don't worry.
+30:27 - I'll show you how to have AI do all the hard stuff for you, so you could actually have Trading Bots Live. I didn't have prior knowledge about this.
+30:34 - And if I can do this with zero experience, you can too, right?
+30:39 - Yes. Yes. Yes. Yes. Yes. You can. You can. You can. You can. You can.
+30:44 - And what's really cool is there's a lot of reviews. You can go search the internet. You know, again, I I acknowledge I am a random person on the internet, but you found me somehow. So,
+30:52 - you're a good researcher.
+30:54 - There's some beginners and super advanced coders that have written really great things. You can go search that on the internet. I've saved them hundreds
+31:01 - if not thousands of times in the process of getting their bots live cuz we all have ideas.
+31:13 - So you might not have the architecture to get there, the road map to get there step by step. So whether you're a complete beginner or an experienced coder, it doesn't matter. It's going to
+31:21 - be extremely impactful. I'm going to show you step by step how to get your trading bots live.
+31:33 - You guys know me. I think my name is Mundave. I believe code is a great equalizer cuz I figured out a secret that changed my life. Dude,
+31:41 - I was just that normal hand trader that would be profitable for a couple weeks,
+31:46 - 3 weeks, four weeks, have the confidence, and then just one day get emotional and get liquidated.
+31:57 - I remember watching a position I put like 30 racks in 40x leverage. It's pretty big. Wait, 2 M.
+32:05 - I watched that I watched that thing for two days.
+32:09 - Two days, dude. I was barely getting any sleep. I don't know why. Like, looking back at it, it's obviously emotional Amyda decision. Two days in a 40x position. What the hell?
+32:21 - You know, you can't do that, Moon. But after night one, I was up. I was up.
+32:30 - I was my margin was up to 60 racks. I was feeling good. Of course, I'm going to let it ride for another day. I go to I go to sleep.
+32:39 - or wake up to a new day up another 40%.
+32:43 - Yeah, I'm I'm crushing it, dude. I was using 40x, so you know, it's only a 1%
+32:47 - gain, whatever. And I really felt like I had figured out a system. I don't know about you, but every time I do a winning trade, I'm like, "Yeah, I got a system
+32:55 - now. I I got a system. I'm sick. I finally got a winning leverage position.
+33:00 - I'm just going to let this ride." It worked for a couple more nice little chop here and there, but it got up to about 80,000 in margin. And I was like,
+33:07 - "Okay, that's nice."
+33:11 - But I just kept it open. I just kept it open, dude. And you know what happened next?
+33:16 - Wake it up eventually to you've been liquidated. You've lost all of your money. Sorry, Mundave. Your strategy sucks. You should have closed this when you were in profit, you idiot.
+33:29 - And it's just frustrating. Uh I have so many stories over and over again that pretty much the same story year after year. And it's just like it's the worst.
+33:38 - It's the worst. It's the worst. It's the worst. But that one that one in particular, I made a commitment that day. I'm never I'm never coming back.
+33:44 - I'm never coming back to this hand trading stuff. I'm never going to trade by hand again. Now, this was a few years back and it was a blessing in disguise.
+33:52 - It was a blessing in disguise because thanks to trading algorithmically,
+33:59 - I live a life where I I'm free. I'm free from the charts and I have more exposure to the markets than most. I'm trading
+34:08 - more than most. I'm trading way more than I was in the past, but I'm not actually doing it. My amydala has nothing to do with this.
+34:21 - To me, this is a video game at this point. You know, I'm 5 years deeper than you, though. So, might not be a video
+34:28 - game to you yet, but I'm at the place where I'm just chasing Jim Simons. I'm making my systems better and better and better. He's a $31 billion man, and I've
+34:37 - set out on the journey here to share the entire thing live on YouTube. And I know that whether I'm at the beach,
+34:46 - down the street, hanging out with friends, traveling the world, whatever, I've got bots trading for me 24/7.
+34:54 - Can you imagine how much better your life is going to be once you're fully automated? Once you don't have to worry about the stress,
+35:03 - I believe in you, bro. I believe in you because I've been told my entire life I can't do things.
+35:10 - I just show people how. I'm just going to put the work in and I'm going to show you how. Oh, I can't do this. I can't do that. Okay, let's see. Oh, you got to
+35:17 - You're not going to go to the eighth grade. Okay, whatever. Let's get it. I'll show you in a few years. Okay.
+35:23 - Okay. Okay. Okay. You can't become an automated trader cuz you didn't go to Stanford. Okay. Guess what? I locked in. I figured it out.
+35:31 - You can do anything.
+35:34 - You can do anything. And I know for a fact he ran up a net worth of $31 billion. And his blood is the same color as mine and yours.
+35:48 - Wall Street's there. They're never going to share. They're never going to share this. They're never going to share this and they're pissed at me. I'm getting I'm getting hack attack hack attacks.
+35:58 - People getting into my server trying to steal my crypto. They're sending a message, dude. They don't want me to share this. So, I'm not going to keep
+36:07 - I'm not going to keep teaching this. I'm just going to use my bots to come up with ideas or use this little hand trading bot come up with ideas and I'm going to go automate it on my own time.
+36:15 - But today today I want to give you uh kind of like a final final training here.
+36:26 - I need some yeses in the chat. If you actually want to get Trading Bots live,
+36:30 - throw a yes in the chat in the next 30 days. Throw a yes in the chat if you actually want to get Trading Bots your trading bots live.
+36:38 - Okay. Okay. Okay. You guys are locked. Let's get it. You're Thank you.
+36:46 - Oh gosh. Let me get the keys and stuff in the chat just in case somebody is new here. Welcome in guys. Much love to you.
+36:53 - Yes. Okay. So, everybody's trying to get their bots live. Okay. Okay. Okay.
+36:58 - Great. Great. Oh, we got somebody else coming in here. People are flying in all day today.
+37:06 - Now, in order to be great at this, you have to be someone who's a little analytical, somebody likes data. You got to be able to look at numbers. You don't have to be a mathematician, nothing like
+37:14 - that. I'm not a mathematician. I'm not a I didn't get past algebra 2. I did like algebra 2, but I didn't I I couldn't do
+37:21 - more than that. Um, but traders like to look at numbers. You know, you like money. You're looking at numbers all day. You found me somehow. So, I know you're analytical. You're a data dog.
+37:30 - You like to look at data and figure things out. Perfect. Traders, we all like to look at numbers. You don't have to be a mathematician,
+37:37 - nothing like that. You don't have to be a scientist, nothing like that.
+37:41 - You just have to be a trader. Really, if you're a trader right now, are you guys all traders? Throw a yes in the chat if you're currently a trader.
+37:49 - Are you using codeex? I'm not. I'm using uh Do we have any traders in here? Throw a yes in the chat if you currently trade.
+37:58 - Yes. Yes. Okay. Okay. We do have traders in here. Novice. Okay. Perfect. Perfect.
+38:07 - All right. Well,
+38:11 - From this point on, you're not just a trader anymore. You're not a trader.
+38:15 - You're not a trader. Cuz let's be honest, dude. When you tell your family members, you tell your friends that you're a trader, they kind of look at you like, "Oh, hyper gambler. Are you okay?"
+38:25 - It's like, "Mom, I'm good, bro. I'm good." From this moment on, you are officially a quant. someone who would
+38:32 - chew on data, use AI, build trading systems that build trade trading bots that trade for them for the rest of their lives. Like there's no there's a
+38:41 - big difference now. When you shake somebody's hand, what do you do? I'm a quant. You get respect on your name. You get doors opened and you are a quant
+38:49 - now. You found me to help you build trading bots. You're a quant. So
+38:56 - change your Twitters, change your change your everything, dude. Change your intros. Change your elevator pitch.
+39:01 - Change all of that. Dude, you're a quant now. You're not a gambler anymore.
+39:08 - Because traders, they're really just gamblers, right? I want you to forget that old way of trading by hand. It's
+39:14 - trash. That's why 99% of people fail cuz they trade the old way, the manual way. But data dogs,
+39:22 - we see what actually works in the past.
+39:24 - And if it works in the past, then it's much more likely to work in the future.
+39:30 - I'm going to show you all that. Don't worry.
+39:33 - You're a quant at minimum. You're a data dog. Same thing. We don't sit here and trade by hand. No, you're not going to see me look at these charts. 99% of
+39:42 - traders lose. Why? Because they're trading that way. They're the product of Wall Street. Wall Street needs them. So, they're always going to be like, "No,
+39:49 - you can't do this because you ain't got st you ain't got Stafford. You ain't got to hire." But we don't trade like them.
+39:58 - We don't trade like those hand traders they want us to be. Oh, get this little prop for Yeah. 200 bucks. You could get 50,000 in size, yada yada. No, dude. No.
+40:07 - No. We don't do that. There's not many of us here, dude.
+40:18 - But that's a good sign in trading,
+40:19 - right? You want to be on the other side of the trade. Jim Simon says it all day. If everybody is doing something one way,
+40:28 - don't do that. If everybody's trading by hand right now, using these prop firms, don't do that.
+40:36 - By the end of this, you'll be top 1% of traders in the world because you're just approaching the market differently. You're approaching it with numbers.
+40:46 - People are going to be asking to pick your brain. People are going to be hyping you up. Dude, you're a quant now.
+40:52 - There's not many of us. And I was you just a few years ago scared scared to learn how to code. And like I told you,
+40:59 - I spent 10 years in technology like building businesses, building apps and hiring developers. So I know from
+41:06 - experience that you can't do this by hiring a developer. You have to take it on your own. But we have these developers in my front of my screen,
+41:13 - dude. Cloud code all day. She can build anything. She can build anything.
+41:20 - AI can build anything for us. All you needed was this better approach,
+41:27 - maybe some a road map. So, I already threw the road map in the in the chat. We'll go over that here at the end.
+41:36 - I told you already that I got held back in seventh grade. So, if I can do this,
+41:40 - you can do this. My teacher, my home room teacher, she pulled me in. She said, "Moon, we got we got to talk." I'm like, "Okay, let's talk." And she said,
+41:47 - "I don't think you're going to make it around here." Damn. I felt some sort of way by that that verbiage right there.
+41:53 - That felt a little like a little hasty first off. Long story short, she said,
+41:59 - "Yeah, if you want to stay, you're you're running you're running seventh grade back. You're doing it again or you're going to need to find a new
+42:06 - school." This was after I like moved I moved when I was 12 to a whole new city from another state. Lost all my friends.
+42:13 - Then I get shoved into this school where the teacher's telling me I can't go to the next grade. Like what the hell, bro?
+42:22 - But that's my whole life, dude. I've been told, I'm sure you've been told your whole life, you can't do this,
+42:28 - can't do that. But that's just pe other people's opinions. Like, f them, dude.
+42:32 - You can do anything. I know you can do anything.
+42:37 - Fast forward what decade later. Well, I guess I was like 12, 13. A decade later, I've
+42:46 - already ran up more than my teacher that held me back does each year like with the apps. Okay, great. Another decade,
+42:54 - boom, fully automated trader.
+42:56 - I'm sure you've had people that have said, "You can't do this, you can't do that." I'm just the slow kid that got held back in seventh grade and now I have trade bots trading for me 24/7,
+43:07 - 365. I got AI cooking for me all day long. I'm chasing Jim Simons 24/7. He's a $31 billion man. So, if a middle
+43:15 - school reject can do this, you can do this as well. I know it for a fact. I've seen it. I've seen hundreds of you guys come through here. I've seen hundreds of
+43:23 - you guys come through here and learn exactly what you're learning today and
+43:32 - actually get their bots live. Not just like learn some stuff and then go back to old trading. No, these people learned what you learned and put it to action.
+43:42 - It's crazy, dude. It's a beautiful world. It's so great because it's not me. I'm just here. I'm just here chasing Jim Simons and you're you found me somehow. Like, you're the researcher,
+43:53 - dude. You're ahead of me because I'm giving you everything I know.
+43:59 - And then you could go you go way past me. Someone said that the other day.
+44:02 - They're like, "We have a huge edge on you. You literally tell us everything you know and then we can go build our own stuff and we don't have to talk about it." You know,
+44:10 - I'm talking through all of this. Slows me down a little bit. And I'm I'm f I'm sure you're familiar with Jim Simons,
+44:16 - right? I know I've mentioned him a few times, but he ran up a network of $31 billion. He ran Renaissance Technologies. Still here, still going today. I know you've heard of Citadel,
+44:24 - Jane Street. These are automated trading funds essentially,
+44:31 - and they're the ones that are successful. You look around, who's successful? Automated traders. automated traders.
+44:40 - One random day, I was hunting for a new place to live at and my uh my realtor drags me into this
+44:49 - this beachfront apartment. Dude, not beachfront. Not beachfront. Not beach front. But you can see the ocean. Not beachfront. Definitely not beachfront.
+44:57 - You can see the ocean though. It was paradise though. Puerto Rico. Puerto Rico. Paradise.
+45:06 - But the odd thing was I walked in there,
+45:08 - some dude sitting on the couch with his computer and there was a bunch of flashing lights. Kind of like these flashing lights you see on my screen. I was inspired. What are you doing, bro?
+45:15 - First off, why do you have the air conditioning on when the windows are open? Yes, it's a beautiful view. I love it. But why are the windows open and the
+45:23 - air conditioning on? How balling are you, bro?
+45:27 - Really serious trying to like show me around yada yada. Finally blurred out. Dude, what the hell is on your computer? He smiles. He smiles at me. He said,
+45:34 - "Umate trading boss. I push a billion dollars per day." A billion dollars per day.
+45:44 - I was tripping. You know, Jim Simon,
+45:47 - Citadel at this point, you know, they're like gods on another planet. I don't know them. But this guy sitting in a tank top chilling on his couch, windows
+45:54 - open, air conditioning, realtor showing me his house. I was like, "Okay, well, we're we're like on the same level.
+45:59 - We're the same people, you know, like I'm looking at your place.
+46:05 - Why you have the air conditioning on the windows open though? You are two baller.
+46:11 - But that's what it took for me. You know, I was in that situation of like I got some cash. I'm trading. Okay. But
+46:21 - it's not going too well. Not with my emotions, not with this much leverage.
+46:25 - But that day, dude, that day changed my life forever because it gave me a real example of somebody just like me. But he was he was trading a billion dollars per
+46:34 - day automatically. I was trading much much much much much smaller and losing it because I was using too much leverage. So he clearly just figured
+46:42 - something out. Just a regular dude like me. And if you figure something out when it comes to trading bots, you can scale fast and hard. And he was at a place that I didn't know if I could ever get
+46:50 - to. I was scared to learn to code. But all I had to do is meet this guy and I was like, "Yep, you can do it. I can do it, too.
+47:02 - He's just a regular dude. I'm just a regular dude. Funny guy. Kicked it with a few times. He didn't share anything
+47:10 - with me, though. No way. This industry is way too secretive. He's trade a billion dollars a day. You think he's going to tell some chump like me? Shoot. I'm in Puerto Rico for a reason.
+47:18 - Obviously a killer, but can't just let your secrets go. But Jim Simon says, "If everybody else is doing
+47:26 - something one one way, you better not do it that way." So I decided, hey, there's nobody teaching this stuff, I just got inspired by homeboy. He made it clear
+47:34 - that, oh, I could actually learn how to code. I could actually automate my trading. So I locked in for four hours a day and just learned how to code.
+47:41 - Crushed it. I got a co-working place and just learned how to code step by step.
+47:46 - So u now I'm here because I got inspired some random dude. And I hope that like my randomness and you can see that I'm just a regular
+47:54 - dude. I hope that inspires you to finally get your trading bots live. And I'll try to give you everything I can in order to help you get those bots live.
+48:03 - Cuz at the end of the day, I don't know about you, but automated trading it is the only way I'll ever trade for the rest of my life because it's just so
+48:11 - much less stressful. There's so much anxiety when you're in those charts.
+48:17 - My plan was simple. just lock in four hours a day till I figured it out. And I did.
+48:23 - And before that, I was convinced it was only for the Ivy League, the Stanfords,
+48:27 - the Harvards, those quantum equation guys, you know, things that I would never be able to do. Or you need a massive team of quants like Citadel and
+48:37 - we the retail, we're stuck to just trading by hand. But like, no, dude. If somebody else could do something, you could do it, too.
+48:45 - And that's the truth.
+48:48 - So, I want to show you how to actually steal profitable strategies from your competition, okay?
+48:59 - Because at the end of the day, trading there's it's better to find strategies that actually work
+49:06 - than waste your time like coming up with your own ideas. Now, you might have a few ideas, that's awesome. But let me go ahead and show you how to steal profitable ideas from your competition.
+49:14 - Let's go ahead and go to mundave.com/roadmap.
+49:16 - Everybody in the chat here in the Zoom chat should have access to this.
+49:22 - Let me go ahead here and drop it in there as well. So, if you're in the Zoom chat, you have the API key
+49:30 - and you can unlock access to this road map. This road map is thick, dude. So,
+49:35 - this alone is like reading a book on how to automate your trading, how to get your trading bots live. But I want to
+49:42 - show you how to steal people's ideas. So you can just start from a position of power, you know. So how do you find ideas? Okay, the system I'm about to
+49:50 - explain to you in secret 1, two, and three is the RBI system. The process of automating your trading, it starts with research of trading strategies. So we're going to start with the R research. How
+49:58 - to find great ideas that will actually work in the past or at least have a chance. First off, I have hundreds of ideas here from my experience and me
+50:06 - just testing and me thinking and reading and watching and I just put them on this road map so you can have a head start on
+50:14 - me. You know, I've spent 5 years doing this. So, I've listened to a lot of books. I've read a lot of papers. I've watched a lot of videos. And on this
+50:23 - road map here, uh there's hundreds of ideas you can dive into. But I want to show you the source of these ideas and
+50:30 - how I come up with new ideas because this is how I literally just steal ideas from people ethically. I mean, right?
+50:38 - It's just like they're giving us our ideas. Market wizards books. Read all of these three to four books. Jack Schwagger, he interviews the verified
+50:45 - best traders in the world. Okay? Best traders in the world. And they're verified. So, they just talk about their strategy. Boom. You have three or four
+50:53 - books that you can listen on Audible. I listen on Audible.
+50:58 - I'm about to run through these books again actually now that I I think of it because these are amazing ways to find ideas to trade. These are real traders
+51:06 - verified profits and they literally lay out their strategy. And then another one here is chat with traders podcast. There's like
+51:14 - 300 episodes. So this is probably like 10 people per book. So about 30 40 pe traders maybe. This has 300 traders. I
+51:22 - say this is higher quality, but this has some absolute fire and I would overall I'd actually think this might give you more ideas. So these are two this one's
+51:31 - free. It's a chat with traders podcast and this one is paid but then you can see all these other books if you want to screenshot them. These are great books to read if you want to come up with
+51:40 - ideas. The quants flash boys dark pools the man who saw the market is about Jim Simons who I have ref referenced like 82
+51:47 - times today. The Black Swan best loser win is very wins is very important to understand that you can kind of get it
+51:54 - out of the title, but here's some technical books if you want to go ahead and look through those. Uh, another great place to find ideas is I'm just
+52:03 - going to drop this real quick. Google Scholar. You can come here and type in trading strategies or something like
+52:10 - that. You know, maybe mean reversion strategies. And these are papers written by PhDs. Now, a lot of people have thanked me. They ch this changed their
+52:17 - life just knowing this little secret here. You get to see papers written by PhDs. If you're not a PhD and you want to learn from PhDs because you think
+52:25 - they're going to be able to cook harder than you, okay, read read it and then I'll show you in the next secret how to test it evaluating strategies. So, you can just you can play on here forever. Actually,
+52:35 - inside of our um Discord, what I did is I hired some quants to do this exact process. go through these hard papers to
+52:43 - read you because they are they're a little hard to read. Let's be honest,
+52:46 - it's harder than listening to an audible book, of course. But there's alpha in them. So, I've had quants on my team post these in Discord for me and everybody in the crew for years now. So,
+52:57 - they read the papers and then they come up with the actual strategy. So, I hired these guys because obviously having four of us attacking this at the same time is
+53:06 - better. And then I was like, "Yeah, I'm actually just going to release this to everybody in the community as well." So that's in that discord breaking down
+53:13 - papers here all the time. Trading strategies mean reversion, whatever you want, dude. So now you know multiple ways in order to steal people's
+53:21 - strategies that actually work because you know they've been verified. Market wizards, those are verified traders. Now it might not just be plugandplay, but
+53:29 - I'm going to show you how to see if they actually work in the past. Now, being able to see if they actually work in the past in my book is like this is like the
+53:37 - pivotal moment of your life because if you're a trader training by hand, you actually don't know if your strategy works other than your your like four P&L, but
+53:44 - you get liquidated all the time. Your strategy doesn't work. But the question is, would it work if there was no amydala? If there was no emotional brain,
+53:53 - that's the real question. So, this process is called back testing.
+53:58 - And it seems a little complex, but again, it's really not that complex. We have AI to do most of these things. So
+54:05 - now you know where to get ideas, but how do you see if they actually work in the past? You see, I just go to one of my uh AIS here and I just say, "Hey, can you
+54:14 - go ahead and check my back testing folder and I have this new idea about the VWOP
+54:22 - capitulation?" So a capitulation volume bar and then trading it back to the VWOP. So look at my back testing folder
+54:29 - and use one of those back tests so you can see like one with data and use that data and go ahead and back test this for
+54:37 - me. Test three different ideas across three different agents and then just send me back the stats back. Thank you.
+54:42 - So we're at a point where this process right here you you're seeing me doing I'm building three back tests. Okay. I got so excited on my first back test
+54:51 - that I didn't even finish my food. I ran home. I was at a diner here in PR or a diner, cafe, whatever you call it, and I
+54:59 - just I ran home because I found my first winning back test because a winning back test shows you, hey, this was actually profitable in the past. Let's go ahead
+55:06 - and see here. Can you show me a couple of those Polymarket back tests in my folder? If you look at the read me of the Poly Market, I think it's uh Poly
+55:14 - Hyper or look around. Uh we just put a uh results read me and we were back testing poly market bots on the five
+55:22 - minute and a couple of them did really well. Can you give me a table of what those stats are and also explain the
+55:29 - three strategies? There should be the top three. Okay, thank you. So now yesterday I was just doing back testing just like I'm showing you here, but I
+55:38 - was doing it on Poly Market because my Poly Market stuff is is doing this bot is doing pretty well. So, um, it's not
+55:46 - on right now because I want to go ahead and come up with new ideas. Another way to come up with ideas. I know I showed you how to find ideas that actually were
+55:54 - like profitable, right? But another way to come up ideas is just trade with small small size. So, if you've been a trader before, you have ideas because
+56:03 - you're a trader, right? Now, I don't want to encourage anybody to go trade.
+56:06 - I'm 5 years into this. So, when going to a new market like Poly Market, I'm testing these fiveminute markets. Very dangerous. But I got to do a little bit
+56:14 - of trading to come up with ideas and I've come up with ideas here and you can see I back tested these and yesterday and I was able to see the performance of
+56:22 - them. Like for example to me this is X-ray vision when it comes to trading whether you're trade on Poly Market or
+56:30 - Coinbase whatever dude I get to see that this idea the MAC D 3153 on these fiveminute markets they had a a win rate of 60%.
+56:41 - an edge of 618. PO of 119,000.
+56:46 - This one had a win rate of 59%. This one had a 63% win rate. And we did all the stress testing needed.
+56:55 - And the process here used to take me hours and hours, eight hours minimum.
+57:01 - It made me run home from that C cafe when I found a winner. That's how excited I was. A grown ass man running down the street. But now like yesterday I built these in hour.
+57:12 - You can see they have real like real edge here. Now these are back tests.
+57:16 - It's X-ray vision into what would have worked in the past before you get too excited. Just because it worked in the past doesn't guarantee it's going to
+57:23 - work in the future. But it's just a much better approach to just staring at these charts, right? See like guessing every day. Every single day you're guessing.
+57:31 - Is it going to go up or down?
+57:34 - Up or down? Up or down? Up or down. and you're just betting that over the next thousand days, your amydala is not going to get in the way and you're not going to get emotional and lose all your
+57:43 - money. But back testing is the process of taking that data, seeing if your strategy actually works in the past. So those strategies I showed you how to
+57:50 - build or how to come up with well you can go ahead and see if they work in the past. Here you can see Claude is saying,
+57:56 - I see the pattern blah blah blah. I'll spin up three agents in parallel. Simple capitulation reversion here. capitulation plus RSI oversold.
+58:04 - Capitulation plus Ballinger band squeeze.
+58:08 - All trash strategies. But thank God I figured that out,
+58:13 - right? Because a lot of people will go ahead and trade a strategy that is literally a negative 94% return. And right here, I just saved that person the
+58:21 - rest of their life. Like if they keep trading that strategy for the next year,
+58:24 - they think it's it's fire and they've never back tested it before. Imagine trading a negative 94% return strategy for the next year thinking it's
+58:31 - profitable when I can literally see if your strategy is profitable. So from here on out you now know how to go ahead and see if strategies are profitable
+58:39 - because if you go check that road map I actually put a bunch of code in there as well. So you know how I referred to the template.
+58:47 - This is the template. So here's all the code for that template. You know you can send this to your AI and say hey here's a template of how to back test. I think the key important part is it's
+58:56 - backtesting. py but I write this all down in the road map so you you know you don't have to like take notes right now. You can just
+59:04 - make sure that you know what part of the road map is showing everything the RBI system. I just showed you how to find ideas research.
+59:13 - Then I just showed you how to back test.
+59:15 - Well back testing takes data from the past. Where do you get the data mundave?
+59:19 - You scroll down on the road map. Scroll down on the road map and you can get crypto data here.
+59:25 - So, if I want Bitcoin data on the five minute for the last year, I get it right here. Download it, send it to my AI with
+59:33 - the template I already gave you here of the actual code. See, I'm trying to make this easier for you because it was very hard for me. That guy that was trading
+59:42 - billion dollars per day, he was a cool guy. It gave me the inspiration, but he didn't give me any ideas. He didn't give me a step-by-step plan. Nobody's going to share this. Wall Street is very
+59:50 - secretive about this industry and you know that they need people to trade by hand.
+59:57 - But now you know how to find great ideas. You know how to back test those ideas to see if they actually work. The this example I did, these are all trash
+1:00:04 - strategies. But this example of yesterday, these are fire strategies. So boom, just like that, you're already a better trader, right? Cuz
+1:00:14 - before you were just trading strategy you thought was profitable, but now you're actually trading strategies that you know at least were profitable in the
+1:00:21 - past. That's a much better indicator in my book.
+1:00:31 - Now once you find profitable strategies,
+1:00:33 - I like to incubate. So incubating is the process of running a bot, building a bot. So this is where you build the bot.
+1:00:41 - build a bot but with small size because what I did be before I found that winning back test before that I had already learned how to code and I went
+1:00:48 - ahead and I went and built a bot I put 10K in and I thought just because I know how to build bots I'm going to be a billionaire now right I was naive no a
+1:00:57 - lot of people know how to code moon of a lot of people can build bots have to be profitable have to be profitable strategies but I went ahead and pretty
+1:01:05 - much lost 10k in my first bot because I didn't even see if it worked in the past I was just trying to automate the strategy that I thought was trading well. Uh I was trading well but in
+1:01:13 - reality in my past I was trading a strategy that didn't even work. So then when when you automate that strategy it goes to zero. But out of that it taught
+1:01:20 - me this gave me a system that I can rely on now because now you're researching coming up with real ideas that actually work
+1:01:30 - and then you're proving that they actually work in the past. And then instead of putting 10K in like I did,
+1:01:37 - you put like $10 in, $15 in, you incubate them to see if it actually works in the future. Now, everybody else is going to sit here and be like, "Look
+1:01:44 - at my Trading View back test. I'm making a billion dollars, yada yada." But once you get into this game, you're going to realize that just because it worked in
+1:01:52 - the past does not guarantee it's going to work in the future. So that's why I highly recommend to incubate. After you find something that works well, incubate
+1:02:01 - small size and then scale slowly. Go to 10 to 20 to 50 to 100. Okay.
+1:02:10 - Now, here's some steps in order to automate your actual your actual bots here. Uh, make sure to always I look through these step steps,
+1:02:18 - by the way. Always add risk controls to the bot. Risk is everything. It's the number one thing.
+1:02:25 - But that's the beautiful thing about automated trading is your risk is controlled by a computer opposed to you and your brain, your emotions.
+1:02:32 - The second thing is to make sure to add the strategy precisely that you back test it. Now AI is going to be able to help you make be make sure it's precise that you got to figure out if you're entering limit orders or market orders.
+1:02:42 - A lot of people don't get this or understand this. No, no, you'll understand it, I hope. But
+1:02:50 - using market orders are three times the price. So it's like going buying an iPhone and saying I can't wait 5 seconds. I'll pay for 3,000 instead of
+1:02:59 - a,000. If you have an account size of $25,000 and you're using 40x leverage and you trade five times per day just based off of fees,
+1:03:10 - you'll lose your account in 31 days. So,
+1:03:12 - a lot of times you're you're probably not a bad trader. You're just trading too much and losing the fees and using market orders. Now, humans tend to use
+1:03:20 - more market orders than limit orders just because we got to get in now. We got to get in. We got to get out. We got to get in. We got to get out. We got to get in. Got to get out. So, if your
+1:03:28 - account is 25,000 using 40x leverage and you're trading five times per day,
+1:03:32 - you'll lose all your money in 31 days just because of fees. But if you had a patient bot, you would add 717 days to your life.
+1:03:42 - Don't you think that you could figure this out in 717 days? Especially with the road map I've already given you.
+1:03:51 - Of course, dude. Of course. So just right there it should like you should be uh be able to see that a hand trader is
+1:03:59 - at such a disadvantage because that amydala that emotional part of their brain makes them say I need to get in now opposed to just saying a limit
+1:04:06 - order. Just set a limit order and you pay a third of the price and that adds up over time because remember in 31 days if you have 25 racks 40x
+1:04:14 - leverage five times a day you lose just based off of fees you lose 13% per day.
+1:04:19 - It's crazy. Nobody knows that. So, when you're building a bot, you want to ask yourself, how are we entering limit or market? For these Poly Market bots,
+1:04:28 - these fees are even crazier, dude. But it's free if you use a limit order. And if you're trading this by hand,
+1:04:35 - you're not going to use limit orders.
+1:04:37 - Just straight up, you're not you're going to use more markets. I know that.
+1:04:42 - Now, this is a big thing. You got to make sure to check to see if you actually have a position already before you put in a new order. because I see
+1:04:51 - this happen over and over again. People will will drain their accounts because they'll just put more and more orders in. So, always make sure to cancel to
+1:04:58 - check to see if there's already an order there and cancel it if you're going to put it in another order. So, I just go through this checklist. And I think it's
+1:05:06 - important that you have this same checklist if you want to screenshot it or whatever. And then you want to figure out how you're going to enter. Are you going to put stop-loss orders in or you going to use like a P&L P&L close?
+1:05:16 - That's what I call it. It just watches my stop losses and take profits. And then you want to make sure that it it runs every few few seconds or minutes or
+1:05:24 - something like that. It want it needs to be automated, right? We're here to have automated bots that run all day and always checking the signals that you got to make sure you get all your debugging
+1:05:32 - off and then launch with tiny size. On Hyperlid, it's $10 minimum. On Poly Market, it's even better. It's $1 minimum. So, when you're incubating on
+1:05:41 - Poly Market or Hyperlid or any other exchange, use the minimum because there's no reason. I know it's tempting.
+1:05:48 - And I know it's tempting, but there's no reason to use more than the minimum. And then check every few hours when it's in
+1:05:55 - the incubation stage. You know, check every few hours, make sure it's working.
+1:06:00 - There's any bugs, fix them. This is a little code that you can use to loop the bug. But the key insight here is strategies that worked in the past are not guaranteed to work in the future,
+1:06:08 - but they're much more likely to work in the future than strategies that you haven't tested. So that's the edge. You know, now you have a system that came
+1:06:16 - out of my hardships. First off, I did I was trading with emotions. Okay, I figured out how to automate my trading.
+1:06:21 - Figured out how to get trading bots live. Okay, but how did I do that? Well,
+1:06:26 - I went ahead and learned how to code and I built a bot. I lost money. But that's because I didn't have this system. But you do. That's why you're at such an
+1:06:33 - advantage on me, dude. Cuz I spent five years attacking this industry, building my systems, and then I was able to build a framework that anybody can follow,
+1:06:41 - including myself. I'm always either researching or back testing or incubating. Every single day you see me,
+1:06:47 - every time you get on YouTube, you know I'm still here, dude. You know I'm still here. I'm still locked. And I'm always doing the R, the B, or the I because Jim
+1:06:55 - Simon says, you just have to make your systems better and better and better because that's what everybody else is going to do. It's the ultimate game in
+1:07:02 - my mind. I'm just chasing this guy $ 31 billion off what you know now. You know how to come up with great ideas, right?
+1:07:11 - Yes.
+1:07:12 - I showed you all those books, all those the paper resource. You know how to back test those ideas, right? I even gave you
+1:07:20 - the road map that gives you data. Like data, this cost hundreds of dollars to get data from places. I gave you the
+1:07:26 - road map that gives you free data. And then you also know how to build into bots. So,
+1:07:35 - I don't know, dude. I'm just I'm just proud of you for finding this and finding how to actually
+1:07:42 - get started. I got some things I want to do here. I want to go through and build this bot.
+1:07:49 - So, this is an idea that we had yesterday, and we back tested it, and it it looks like it did well.
+1:07:58 - 60% win rate, 59% win rate, and 63% win rate. So, I want to go ahead now that you know how to like the process I'm
+1:08:06 - following. I'm now I'm going to build a bot to incubate it. So, I'm going to show you that process. It's super easy.
+1:08:10 - Now, it's crazy because we have AI to do all the hard
+1:08:17 - work. So, what I want to say here is let's go ahead and open this code up. I I rarely I never code anymore, but
+1:08:27 - sometimes I have to open up the code to see like where we're where we're at essentially. it. I know this is very
+1:08:33 - very intimidating looking, but it's it'll it'll grow on you. You're an internet guy.
+1:08:42 - You're an internet guy, dude. Yeah, it'll grow on you. CVD copy past.
+1:08:50 - So, I have an example because I built this I built a bot for Poly Market yesterday. Now, I'm going to build three more. Watch. So, here's an example of
+1:08:58 - how to build a Poly Market bot. I want you to go ahead and put this in the same folder. I want you to build those three ideas that we back tested and they look
+1:09:05 - like they're printing. So essentially build those three ideas and then um
+1:09:22 - yeah build those three ideas and put them on different accounts here. So, if you look at our no market bots inside the no market folder,
+1:09:33 - we have a an account structure here like underscore December 11th in V1, V2,
+1:09:39 - February 19th, V3, August 14th. So, I want you to build these bots to all use
+1:09:46 - that same structure from there, but then above uh use that structure of this bot because this is more of the poly hyper CVD 5m minute bot. these three ideas,
+1:09:55 - the MACD, then the no market bots. But the no market bots give you an example of how we use the multi- accounts. So,
+1:10:01 - pick three accounts that are not our OG account and build use three agents in order to build these bots out in order
+1:10:07 - to um have this exact precise strategy from these three. So, there's three different bots using the precise
+1:10:14 - strategy that is shown above that you just outputed that we back tested here.
+1:10:21 - You're going to use the CVD bot here as the example and then you're going to use the no market bot folder as the example of how to do multi- accounts. So, one
+1:10:30 - bot, one account, and just pick three of them. I'll change them later. Okay, thank you. Go ahead. So, that's it.
+1:10:35 - That's it, dude. You know how to find great ideas. You know how to back test those ideas.
+1:10:40 - You saw my back tests. Now, you know how to build them in the bots.
+1:10:46 - Now, you know how to build them in the bots. And the cool thing is is there's so many people that are just like you that came through here and learned
+1:10:55 - everything. The real deal. If you want to be part of the top 1%, this is where you start. Forget all those get-rich quick clowns. Um, so far my favorite
+1:11:04 - group. I'll update later. My bots are running for a month or so. Update. It's very good. There's a learning curve. Of course. Of course. Moon, I got to say,
+1:11:11 - thank you for sharing all this. It really is hard to find this kind of information organized anywhere. Anyone in doubt, it's definitely worth it. I
+1:11:19 - was in doubt myself, but when I pulled the trigger, I was happy I did. It's not a sales pitch by any means. Just a personal opinion. The boot camp put me six months ahead. Fire community,
+1:11:29 - genuine founder, great content.
+1:11:32 - Mundas Aba Trade Camp is awesome. The community is actually number one for me.
+1:11:36 - I've been in the camp for two days and I'm already collaborating with a few people with the building. I'm building a volume screener bot with someone helping
+1:11:43 - people with code and it's amazing. It's really holding me accountable. If you want to break into algo trading,
+1:11:50 - learn how to build your own bots and learn how to algo trade crypto. This is a great place to learn.
+1:11:58 - I've never received this much value from a course before. I'm a software developer front end mostly, but I'm flexible and tackle whatever is needed.
+1:12:07 - I've never coded for trading bots, so your content is really a treasure for me. Thank you. So, these are people just like you that found me somehow that were
+1:12:15 - cooking three different three different bots up. That's so sick. We got some back tests, but these were just like off the off the whim back tests. Not good.
+1:12:24 - So, it's all good. These ones are actually fire. So, I'm going to build the bots and incubate them like I showed you today. Like I showed you today.
+1:12:31 - Incubate them. Is it really worth it?
+1:12:33 - I'm tired of TG bots and looking for something to build myself. Do you recommend the boot camp at all? Yes. It's been a life-changing experience.
+1:12:42 - I gotta say, listen to Mundev. I too have been doing this for around three years and only started getting somewhere after listening to him. What are you waiting for? The material in the course is everything one needs.
+1:12:53 - So, we're cooking on this and I think after this I'm going to go ahead and Yeah, I'm going to keep building here
+1:13:01 - today. I got a lot to build. I got a lot to build.
+1:13:06 - Are you guys feeling excited about what you learned today? Yes. Yes, arena check today, Josh.
+1:13:13 - I refuse to use I refuse to use TGbots. Here's the key.
+1:13:19 - I'll check out the arena later. It's going to take some time. So, we'll get there. We'll get there.
+1:13:33 - We'll get there. We'll get there. So, we're building these bots out here.
+1:13:37 - I got this going. And I do want to take some of these trades. What's up, Nash?
+1:13:41 - How are you? Good to see you. Good to see you. So, I got this Poly Market like pseudo bot. It is a bot like I can hit
+1:13:48 - buy, sell, whatever. But again, I'm just coming up with ideas here. Coming up with ideas to automate. And that's how I found those three ideas that did really
+1:13:57 - well that we're building in the bots right now. You know, my whole process,
+1:14:01 - you know, everything I know, dude. Good to be here. Good to have you, dude. Good to have you. Now, if you do want to go deeper on actually learning step by step, I know you have the road map now,
+1:14:12 - which is awesome. I wanted to make sure that was super powerful. These guys,
+1:14:15 - they actually joined this and I've got a lot to get done today. So, I'm going to go over this really quickly because
+1:14:22 - yeah, I'm chasing Jim Simons, dude. And I'm chasing Jim Simons. So, this is going to have to be very quick. If you have questions, I said I would do a Q&A at the end here. So, I'll explain this
+1:14:31 - in 5 minutes and then ask any questions you have in the chat. But I've got so much to build and it's almost overwhelming at this point because there's so many opportunities once you
+1:14:40 - actually automate your trading and know how to build trading bots because every single day like you could see me. I'm building three different bots as we
+1:14:47 - speak in the background. And that's not even enough. I have a list of of more systems. I just want to make my systems better and better and better because Jim Simons told me to do that.
+1:14:58 - Now, if you're confused at all, if you're overwhelmed, like, I just threw so much at you, I understand. I'm 5 years in,
+1:15:06 - but what I want to do is give you an opportunity to get caught up to speed with me. Caught up to speed 100%. So,
+1:15:11 - instead of you fumbling around for the next 5 years, let me teach you everything in the ALGO Trade Camp in 6 weeks. Really, like two weeks, I'll
+1:15:19 - teach you everything and then the next four weeks, I'm not your guru, dude. I'm actually chasing Jim Simons and I'm stepping on the gas with you. So, this was two weeks. A lot of these
+1:15:27 - testimonials you saw, they went through the twoe program.
+1:15:33 - So, you can imagine what's in the sixe program. I'm going to show you step by step exactly how to get your trading bots live, even if you don't know how to code.
+1:15:41 - But on top of that, I'm going have I'm going to show you how to have AI do the heavy lifting. Now, I've been using AI to code since 2022, the end of the year.
+1:15:50 - End of 2022. Everybody was calling me a AI coder. It's like now everybody's coding with AI. So, I tend to be a pioneer. Not because of me, but but
+1:15:57 - because of the community that is around me that's saying try this, try that. So you can fumble around for 5 years and try to figure this out based on the road
+1:16:06 - map and yourself. But if you want to save 5 years of time, jump into the hour trade camp cuz I'll show you exactly how to automate your trading. And on top of
+1:16:14 - that, I'll show you how to use AI to do all the heavy lifting. And then on top of that, I'll show you step by step how to build on Solana. Now Solana is pretty
+1:16:23 - cool. was hard to build on, but I make it super easy for you. And then on top of that, I'll go even deeper. I build four different bots with you and I show
+1:16:30 - you step by step how to build bots on Poly Market. So for the rest of your life, you can have trading bots on Poly Market, on any other crypto exchange,
+1:16:39 - any futures exchange, any any stock exchange, any forex exchange. I want to build uh I want to build you into a
+1:16:46 - powerful quant that can trade anywhere because we have ideas all over the place and it's just you need to be able to capitalize. Plus, you're going to get
+1:16:54 - Zoom access forever. You never have to pay $5 to $20 a day for Zoom calls. You get full access. So, you're going to get the AGO Trade Camp. This is where I show
+1:17:02 - you step by step how to get your training bots live even if you don't know how to code. But on top of that, I give you the AI master classes. So, you
+1:17:09 - can see how AI does all the heavy lifting for me. She's cooking up three bots in the background right now. Oh my god, I love this game. But I got to get
+1:17:17 - through this because I got to get back to the game, dude. I got to get back to chasing Jim. I'm sorry I can't spend too much time on this, but this is the best way for me to transfer my knowledge to
+1:17:25 - you is just give you lifetime access to everything, including Quantite. People are paying $367
+1:17:32 - a month right now for this because I dropped 300 plus bots and back tests immediately. You saw the
+1:17:38 - strategies you get. You see the the years and years of strategies here?
+1:17:45 - Well, same thing with code, dude. We've been here for years. You want to see a back test that actually works. You want
+1:17:53 - to see a bot that you can maybe put into your systems. Ideas, ideas, ideas is everything. It comes down to research,
+1:18:01 - research, back test, then incubate. But we've been doing this for years. So, you get access to everything we've already built. Now, nothing is plugandplay. make
+1:18:09 - a million dollars overnight, that's going to lead you in a bad bad place if you ever think that because there's something called alpha decay and that essentially means that if
+1:18:18 - everybody's running the same bot, it's going to go to zero. That being said,
+1:18:21 - instead of fiddling around trying to come up with these ideas and then 8 hours, 12 hours, 3 days building out the bots and the back test, I've already
+1:18:29 - done it for you. We've already done it for you. I hired these quants in order to help me out, help me back test all of these crazy strategies. I showed you all
+1:18:36 - the places I get the ideas from and I just have them and I do that all the time and we've been doing it for years.
+1:18:43 - So, you can see why people are paying $365 a month for this, right?
+1:18:48 - Quantite, you get full access. So, if you're in Quantite right now, you should probably take me up on this because it is a special little day today, isn't it?
+1:18:55 - It's a holiday today.
+1:18:58 - So, you're going to get everything including some bonuses. These bonuses are awesome.
+1:19:04 - This is 2.5 terabytes of videos that YouTube made me pull down. It's the you it's the Mundv vault 100 plus deleted
+1:19:12 - live streams. So if you want to dive deep into any of these topics,
+1:19:15 - essentially my process is is show everything live on YouTube. Now it's on Zoom,
+1:19:22 - figure it out. It might take me four hours, 6 hours, 8 hours, 50 hours, I don't care. I'll figure it out. And what I figure out, I distill down into the
+1:19:31 - algo trade camp in a short, concise video. So, I can take like 10 hours of my time and make a 10-minute video or even 20 hours, 30 hours and put it into
+1:19:38 - the boot camp. But some people want to dive deeper into the the nitty-gritty.
+1:19:42 - So, that's what the vault's for. You get access to all of my past streams that are not anywhere in the world. Not on YouTube, not on Twitch, nowhere. I had
+1:19:50 - to take them down. But, you also get the API key. You get your own personal API key. So, I already gave you the docs and
+1:19:57 - stuff. Moonab.com/doccks. You can check it out. But this shows you all of the power of the API key. I'm building
+1:20:04 - Hyperlquid's data layer and you can see there's a ton of different endpoints.
+1:20:09 - It's $10,000 value because if you go to Coin Glass and you try to go ahead and get their liquidation data, it's going to cost you $900 a month.
+1:20:18 - And the crazy thing about it, it's $900 a month for 12 days of data. $879. My bad. $879 a month for 12 days of data.
+1:20:30 - Just as a bonus here, I give you 18 months of liquidation data. This is all the data of people getting liquidated and it's it's a cra it's a crazy
+1:20:38 - package. Plus the API, plus AI on the API. So, I'm trying to give you the kitchen sink. I'm trying to give you everything because I need you to be caught up to speed with me. If you're
+1:20:47 - not caught up to speed with me, you're you're a liability, right? Like, we're here to help you ask you can ask any question you want. We have a section where you can ask any coding question,
+1:20:56 - any training any any question. We're here to help you,
+1:21:00 - but we got to get you caught up to speed. That's why I only I only chat with people in the members area because these people all know exactly what I know and they're stepping on the gas.
+1:21:13 - I only talk to these people because they actually have taken the training. They understand things. They're caught up to speed with me. So,
+1:21:22 - this is how you get caught up to speed with me. You get both of my GitHubs, by the way. You get the training by GitHub.
+1:21:27 - You get the AI agents GitHub. This has 100 plus extra bots and back tests. You want to trade stocks, futures, forex,
+1:21:34 - crypto, all the connectors are there for you. So, you have two options. Spend five years trying to figure this out.
+1:21:40 - You're not going to catch up to me. You can't. I got I got 30 developers, 30 algo traders with me every single day in
+1:21:47 - these live Zooms, live chats, and then I've got hundreds of them in the members chat. I'm learning in an accelerated speed and I distill all of that learning
+1:21:56 - inside of the boot camp. So, this is how you get caught up to speed with me and it's lifetime access. You also get the Mundav app access. That's where I've been cooking today. That's where I cook
+1:22:04 - every day. You can see she's still building those three bots out. Fire. I can see everybody's positions. You thought you were getting stopped out.
+1:22:12 - You were. They were chasing you. They're hunting you, dude. But now you can be the hunter. You can build those in automated systems. You got the API to do
+1:22:19 - it all. Total value here is $48,000 because I I would have paid 500 G's to learn this. If that guy would have
+1:22:27 - taught me, dude, I mean, he was trading a billion dollars a day. $3,000 for the boot camp. Of course, AI master classes show you how to do all the heavy lifting. I'm not going to charge you all
+1:22:36 - that. Not even going to charge you 24,000. I should get you on a call and charge 12,000. I'm not going to do that.
+1:22:42 - People are pissed at me for not even charging 7,200 because, you know, you look at all the other financial industry sales stuff. It's like they're going to charge you at least $5,000.
+1:22:55 - I'm not going to do that. And since it's St. Patrick's Day, I want to give you some something special. You get the Algo Trade Camp, which is going to hold your
+1:23:03 - hand step by step in the process of automating your trading in the process of getting your trading bots live. AI master classes
+1:23:12 - show you how to do all the heavy lifting with AI. And then on top of that, you get the Solana copy bot and the Solana
+1:23:20 - sniper course. And on top of that, you get the Poly Market Trading Bot course.
+1:23:24 - So I show you how to build four different Poly Market Trading Bots. You get unlimited private Zoom. So all these Zoom calls, you're in for free forever.
+1:23:31 - This is lifetime access, by the way. All access lifetime. You get Quantite. People are paying 3600 or $360 a month.
+1:23:41 - If you're doing that now, make sure to upgrade today cuz we do have a holiday special. Then you get all these bonuses,
+1:23:47 - including the API key, including the GitHubs, including the app. St. Patrick's Day special here, mundab.com/lucky.
+1:23:54 - And by the way, there's a 90-day money back guarantee because I think it's important.
+1:23:59 - I think it's important that you become an informed buyer. I I think it's important that you actually see what's in there. You try it out
+1:24:07 - knowing that, hey, if it doesn't work out for you, you can get your money back. You have 90 full days and that should be plenty of time to consume everything and learn everything I know.
+1:24:15 - Just go to moonab.com/lucky. There's $300 off here today for St.
+1:24:21 - Patrick's Day. You can see you get everything I mentioned here today. The trade camp which is going to help you get your trading bots live. You get the
+1:24:29 - AI master classes, the Salana Kavari bot and sniper course. I'm going to turn you into an automated trader that is
+1:24:36 - powerful, not an emotional trader. Go to mundab.com/lucky. If you have questions, throw them in the chat.
+1:24:44 - Just got in Lifetime. Nice, dude. Let's get it.
+1:24:52 - All right, the link is in both chats. If you guys have questions, feel free to ask them. Um, you can see all of the things you all get here. You get
+1:24:59 - Quantite, which is the big kahuna really because people are paying 350 bucks a month right now for that. You know, I had two choices to make this available
+1:25:08 - for everybody in the world and go like very shallow on this or go as deep as possible and give you every single tool I possibly could in order to make you as
+1:25:17 - successful as possible. It's obviously going to be a little higher price. Yeah.
+1:25:20 - But, you know, how much did you lose in your last liquidation is the question. So, I went route two where it's like,
+1:25:25 - okay, it's a little little bigger investment, but you get 100x more. 100x more. So, you can read all of the
+1:25:33 - testimonials down here. You can see everything that you're going to get. Just go to mounab.com/lucky.
+1:25:38 - He says it's about education. This is real world stuff we're learning, not just a classroom environment. Both are good. I paid them a year in advance. I also go to Harvard for computer science.
+1:25:47 - So, people that are ahead of me,
+1:25:50 - this is why I accelerate so fast. The boot camp is the best value I've ever received. It changed my life. Sending you love. Mund's course is amazing.
+1:25:56 - Honestly, I don't even want more people to know about it because the information is pure gold. However, Mundev truly deserves this rated and so much more.
+1:26:07 - I signed up for the course last week.
+1:26:11 - Money well spent. I don't need to scroll through these. You You have access to them. I got a lot of work to do today.
+1:26:17 - I'm going to be here tomorrow, the next day, the next day, the next day. this discount won't be. So, you have two options today. Save 300 bucks and become
+1:26:26 - a powerful automated trader. Know that there's no risk here. There's zero risk because you have a 90-day, no questions
+1:26:34 - asked, money back guarantee. So, click here. Go ahead and pick your payment option. People ask if you have crypto payment options. I do
+1:26:42 - have a crypto payment option. You can pay in crypto card,
+1:26:47 - debit, credit, whatever. CLA, if you're in the United States and you're actually going to step on the gas. I told you the story about why we're all here today.
+1:26:54 - It's because I had the courage in myself. I had the faith in myself that I can do anything. So, I bought a course for $2,000. This guy was only two years ahead of me. I'm 5 years ahead of you.
+1:27:07 - It's only 1,500 71 a month. I got a lot more to get done today. So, um yeah,
+1:27:13 - we're going to build. We're going to keep building today. I just want you to say goodbye to the old way of trading.
+1:27:18 - Say goodbye to the emotional, the stress, the waste of life. Right now, you might be trading by hand,
+1:27:26 - might be losing money, probably losing money if you're trading by hand. I want you to become a powerful automated trader. I'm just here trying to lead the way. It's us First Wall Street, dude.
+1:27:36 - I'm nobody's special.
+1:27:39 - I just might know something you don't know. And I can teach you that. I can get you up to speed. Five years come like like what are you going to do?
+1:27:47 - spend the next five years trading and be like, "Damn, Moon was right. I should have just taken him up on this 100%
+1:27:53 - money back guarantee, no questions asked offer." It's 300 off today. So,
+1:28:00 - St. Patrick's Day. Just wanted to give you a nice little deal because I know people are weird about money, but
+1:28:07 - money's good. It's a tool. Money, I use credit as a tool to get me here today.
+1:28:13 - You know, I bought that course more than 10 years ago now.
+1:28:17 - I ran up AMS off that course and I bought so many courses after that. I bought a course for e-commerce, ran up AMS,
+1:28:26 - bought a course for Facebook ads, ran up AMS. I'm a big big believer in buying other people's knowledge and and so is everybody else. You know, Jeff Bezos,
+1:28:34 - Mark Zuckerberg, these guys buy knowledge, they buy books, they buy courses, they p they hire consultants.
+1:28:42 - It's just like that's that's a way to get wealthy. Now, I'm not saying you're just gonna plug and play and get make a million dollars overnight. No, this is
+1:28:49 - hard work. But of course, it's hard work. This guy made 31 billion off it.
+1:28:54 - And I can show you every single step of the way to compete.
+1:29:00 - And you know, money replenishes. Money always going to come back to you, dude. You've made money, you've lost money.
+1:29:05 - Always comes back to you. So, uh, it's really about using that money as a tool to unlock knowledge you may not know. Do what the billionaires do. Buy knowledge.
+1:29:13 - buy your time back. If somebody knows something you don't know and they're offering it for 1,500 bucks with a 90-day money back guarantee, you know
+1:29:21 - the money's coming back, you know, if you cleaned up a couple bad habits,
+1:29:24 - you'd be good. You'd be able to pay for it. I pay for Uber Eats every single night, dude. It's just not it's not a good habit. I could just cook. If I just
+1:29:33 - cook for 30 days, I pay this off in no time.
+1:29:38 - So, at this point, you know, there's people that make money and people make excuses. I hope you're not one of those dabblers that's just going to sit through this entire thing, be like,
+1:29:46 - "Yeah, I need my own trading boss, and then just exit here and not do anything,
+1:29:50 - go back to hand trading, lose more than 1500." So, it's a $300 sale here for St.
+1:29:55 - Patrick's Day. If you do want to dive in, you have the link. It's mund.com/lucky. I'll answer any questions.
+1:30:01 - 777. Sean, good to see you. 777. See you later, Felix. Have a great day.
+1:30:09 - I still make updates on my Salana.
+1:30:12 - Can I use the open high low close volume downloaded from the road map with the API API key? Yeah, you can. You can just got into lifetime. Nice, dude.
+1:30:27 - Moon has all Apple. I I'm an Apple guy.
+1:30:30 - I'm an Apple fanboy for sure. My stack is um Apple devices and then Python.
+1:30:48 - test poly market bot. I got this error.
+1:30:50 - I need a little more information from that. No API key. So, I got the API key in the chat.
+1:30:58 - Yeah, unfortunately Mexi, I wouldn't trade on Mexi Mexi Nash. I've heard so many bad things.
+1:31:04 - I've heard so many bad things. could have crossed paths in Missouri. I'm not I wasn't born in Missouri, but I lived
+1:31:11 - in Missouri for one year uh in Springfield. I went to St. Louis called John's St.
+1:31:18 - Louis. I like to incubate for a month. Now,
+1:31:31 - it's discouraging to some people because they want to get to it right away, but I like to watch it for like a month,
+1:31:37 - couple weeks at the minimum and then I size up. I don't go I like double the size and watch it for a little bit more. So, I try to go slow
+1:31:45 - because all I know is that I'm going to be training forever. What is the meaning of 777? Just passing good vibes. Love, I
+1:31:53 - want to be on the beach with you and son. Ah, dude. Come on. Come to Puerto Rico, dude. This is where all of not all, but a lot of great traders out here, dude. A lot of great traders.
+1:32:05 - I don't want to sit on the charts anymore, Dan says. I agree, dude. It's just a waste of life.
+1:32:14 - The open, high, low, close data downloader. Let's go check it out. So,
+1:32:18 - he said it's not working right now. I'll fix it. That's the cool thing is I can fix anything at any time very quickly.
+1:32:26 - So, you do have bund.com/lucky if you do want to join. I'll answer any questions you do have here.
+1:32:35 - Preparing download failed.
+1:32:39 - Try this, dude. Um, since you have the app already, I know this one works, but maybe it doesn't. Maybe it's all failing. Let's say download data. Okay,
+1:32:48 - it works on the app. So, try the app for now and I'll fix that right now. Thank you for pointing that out. No API key.
+1:32:55 - provided. Okay, so let's go fix that,
+1:32:58 - dude. That's the beautiful thing about this place. I could fix anything quick.
+1:33:02 - I could build anything for the rest of your life. You should be able to build anything.
+1:33:08 - I mean, if you make the commitment to being a client right now, I mean, I show you how to code. And if you learn how to code, you know how to use AI better than the rest. And I show you all that. So,
+1:33:19 - from here on out, you're going to be able to fix anything, build anything, always.
+1:33:23 - It's pretty fire, dude. I think that's why I believe codes are equalizer because nobody can tell me anything now. I don't need to go to a job.
+1:33:30 - Hey, um on the moon.com/roadmap under the crypto data section, the data downloader is throwing this error even though I've already put my API key in.
+1:33:41 - So, let's go ahead and get that fixed. Let's see how our bots are doing here.
+1:33:46 - Um code.
+1:33:50 - See if we're done. Nice. We're done with them. So trade every market bot one and two.
+1:33:57 - Let's see what's going on here. Okay. All three bots are built Mundav.
+1:34:06 - So in that time I was explaining it to you. Boom. Quad code does everything.
+1:34:11 - But I teach you how to code in Python. I think it's important to know the fundamentals at least. So when you do join today, uh that's one of the first
+1:34:18 - things I do is I teach you how to code in Python. But don't worry if it's hard or intimidating. I thought the same
+1:34:26 - thing. I make it super easy to understand. And then how I show you how to use AI to actually do all the coding because at this point, nobody codes
+1:34:34 - anymore. And if you're coding, you're just riding a horse to work.
+1:34:40 - What resources do you recommend the most for someone who is very new to trading in general? Books and papers are good to
+1:34:47 - read. Um, books and papers that are good to read. I got some books here on this book list here. I think I already throw threw it in the chat. But these books
+1:34:56 - are a great way to learn trading because if you think about it, what I taught you today is research, back test, and incubate. So, I showed you how to find
+1:35:04 - great ideas. These great ideas are great. They're great trading strategies,
+1:35:08 - period. Can you execute them execute them as a human? Probably not because you're too emotional or you're not at the screen all day, you know?
+1:35:17 - But at the end of the day, this same stuff will help everybody to find great ideas. So, I highly recommend take these
+1:35:24 - ideas and build bots for them because you remove the emotional part of this.
+1:35:29 - But regardless, here's some great resources of places to learn to trade and stuff.
+1:35:38 - Market Wizards books again, they go ahead and interview,
+1:35:42 - I don't know, 50 different great traders. and they tell you their actual strategy. You can see a bot just filled here,
+1:35:50 - entered a long down here. So, I've had bots running this entire time. You've seen them on the bottom of the screen.
+1:35:54 - So, you know, I'm just a regular dude and you can do this as well. So, here's some great resources to learn how to trade or if you are already a trader,
+1:36:04 - where to find your competitor's strategies. So, if you guys have questions, feel free to ask them in the chat and I'll I'll stay here and answer them.
+1:36:14 - Axeman says, "Uh, I just built a Polyweatherbot in 2 days and it's good in paper mode, but actually I just want to do something similar like yours
+1:36:23 - that's doing it its thing in the five minute because PTC or something like that, dude. I mean, building a weather bot is a good idea. So, I don't want to
+1:36:31 - I don't want to like um I just I want to build a weather bot.
+1:36:37 - That's what I'm trying to say. I want to build a weatherbot and you want to build my bot. I want to build your bot and you want to build my bot." So, just you got to test both. test what works best for
+1:36:45 - you. At the end of the day, you're gonna hear a lot of BS on Twitter, like do this, do that. You got to be a data dog about this. And since you already built a weatherbot, I want to build a
+1:36:53 - weatherbot. So, that should give you an insight that like, keep going, bro. Keep going.
+1:36:59 - Yo, One Hood, how are you, dude? Good to see you, bro.
+1:37:10 - GitHub code access. Yeah, the GitHub code access is just for members. Now,
+1:37:18 - all three bots are built. Moondev,
+1:37:20 - here's the summary. MACD 5 minutes. Okay, MACD line. MACD. Okay,
+1:37:27 - so we got December, February, and August. Okay, so I got to get those accounts set up. I have the accounts already set up. Um, but what I'm doing
+1:37:36 - is I'm kind of scaling this idea on poly or these five minute markets on Poly Market. Even though I'm just not a big believer in them. It's just it the price is I'm making money. I'm making money.
+1:37:47 - So, it is what it is. I have to follow the data. I'm a data dog.
+1:37:52 - I'm a data dog. I have to follow the data. Poly market bot ideas. Okay, here we go.
+1:38:01 - So, let me look at these here.
+1:38:13 - Okay. Okay. I might have to do this one off screen,
+1:38:19 - but essentially I got to get back on the VVS.
+1:38:23 - So, all three bots follow the same architecture. CVD bot pattern. Okay. And then let's go ahead on that CVD one. Can
+1:38:31 - you go ahead and update it? the one I sent you as an example. Can you update it so it uses another um account? So, we got multiple accounts and you can see it
+1:38:38 - from the no market bots. But essentially, I want you to go ahead and have that CBD one on a different account as well because I got something cooking
+1:38:46 - on the OG account. I want to mess with it. So, you're going to have to go ahead and update that in order to work that way. Thank you.
+1:39:06 - Okay, so she's cooking that here.
+1:39:10 - Getting the CVD. Let me go ahead and make sure I have these written down cuz I'm excited. I'm excited, dude. I
+1:39:18 - I'm excited about Poly Market. One thing I really like about Poly Market is it there's no leverage. There's built-in leverage by having the fiveminute
+1:39:25 - markets, but there's no like liquidation risk.
+1:39:29 - And I don't know about you, but liquidation risk is not fun. It's not fun, dude. Damn, this is poor.
+1:39:38 - Let me go ahead and say MACD.
+1:39:44 - And when you're done, can you just give me the four bots, just the links to each bot, full path, no uh tables or anything?
+1:39:53 - Because the table looks good. Like I can see that it works. Okay, perfect. But I don't care what it did in the past. Like I showed you that how to see if it works in the past. But at the end of the day,
+1:40:03 - like that's just an indicator to me, you know?
+1:40:09 - It's just an indicator like, okay, it means, okay, Mundave, let's go ahead and try. That was fast, bro.
+1:40:16 - So these four are ready to run. I'mma get those set up. So tomorrow I'll have four different well I'll have five
+1:40:23 - different bots. So in the last two days we built five bot or four bots. Last three days five bots. That's amazing
+1:40:31 - dude because this would have taken me weeks, months.
+1:40:34 - Pushing a year, dude. Pushing a year. So 777 to you. Good. Glad you came through today. Um we're going to go ahead and
+1:40:42 - get these live. I do want to cook some ideas up here. And like I said, I'm not going to share this stuff anymore. Um,
+1:40:49 - I'm going to be more of a just coming up with ideas almost like doing the R more often, researching, re researching, but
+1:40:57 - I'm going to be researching by just using these um this bot I built that enters long and short on on poly market
+1:41:05 - on these fiveminute markets because that's how I came up with these three ideas yesterday. So, you know, one way to research is to read, listen. Another
+1:41:15 - way to research is to just play the game. What is the game we're playing?
+1:41:18 - It's trading. Well, I don't want to encourage anybody to trade more, but that's what I'm going to be doing because I got hacked, dude. People don't want me to share this, and that's why,
+1:41:26 - like I said, this is I'm going to teach you here, but this is just because we have our our uh sale here today. So, I'm
+1:41:34 - not going to I'm not going to keep teaching this stuff. You're going to come back the next day and the next day,
+1:41:38 - you're not going to see step by step how to get your bots live. You want to come to the Zooms, that's fine. But I'm going to be
+1:41:45 - doing this poly market five minute markets and just coming up with more ideas and maybe I'll do some of the whole, you know, showing you. I'm not going to show I'm not I'm just what I'm
+1:41:54 - trying to say is I'm not going to be like, "Hey dude, this is how you do this. This is how you do that." No, I'm just going to be hyper gambling here on
+1:42:01 - Poly Market and coming up with ideas and then on the side of boom boom, I'll just I'll spit them out. So today was, you know, make sure to keep this replay if
+1:42:09 - you do want to like get into the nitty-gritty of how to do this yourself.
+1:42:12 - Um, if you actually want to see with short, concise videos, like actual course style, well, that's what this lifetime access is. It's lifetime all
+1:42:20 - access. So, you never have to pay me anything ever again. And you know how to get there. You see all the results from all the other people. So, I don't need to tell you any more about that.
+1:42:31 - I want to get in a couple of these markets here. Let's see if I can get a couple dubs. Come up with some ideas.
+1:42:38 - So, it's a rejection here.
+1:42:46 - So, I got this bot here. Okay, there's one minute left. I might go ahead and hit ask later. Do you make Poly Market back testing data available or are you
+1:42:53 - just using Coinbase? I'm just using Coinbase data. One minute data because the way I looked at it, Unreal is the um at the start of each five
+1:43:02 - minutes, it's essentially saying, is it going to beat this price or not? So, you actually have the price. So, beat this price up or down. Oh, you got to go. I'm
+1:43:10 - sorry. Sorry, I went over today. I got more to do though. Much love to you.
+1:43:14 - Thanks for coming through, Don. And um I I'll send the replay just because you're going to miss some things here at the end. Uh ever use quant data manager and
+1:43:22 - import tick with high close. I haven't used quant data manager.
+1:43:27 - Analyze gaps. I like gap looking at gaps. I've done a lot of gapping of data as well. I think there's interesting ideas there.
+1:43:36 - But yeah, data data is not always perfect either. So, it's just like, you know, I taught you how to back test, but I don't want you to think that just
+1:43:44 - because a back test, you saw a back test do well, it means you're going to be a millionaire, you know. So, I think it's a good indicator, much better indicator than putting some things on your chart.
+1:43:52 - I just I just shorted here, by the way.
+1:43:55 - I said down. It might have been a mistake. Might have been a mistake, but we'll see. See if I even get in. So,
+1:44:02 - like I said, I'm just going to be doing this here and coming up with ideas that I can then go automate because I automated those few
+1:44:10 - today. And I'm excited for those because now they're going to I'm going to have this
+1:44:17 - data coming back to me all day of real trades because back testing is great. Back testing is great,
+1:44:26 - but I want to see if it actually works in the future, too.
+1:44:31 - Rocket says, "Yes, I got hit hard years ago in options trading, but crypto is so volatile. I got my sea legs now. I'm a sea leg." That's funny. Equities and
+1:44:39 - options markets are nothing compared to crypto volatility. I stared at many walls myself, dude. It's painful. It's painful. Did you make the buy yourself?
+1:44:48 - Yes, I built everything myself.
+1:44:52 - Christian says he can relate to many things I said. You're real for sharing this. Thank you, dude.
+1:45:00 - You're welcome, Sabah. Thank you for the tutorial. You're welcome. I just wanted to share this, you know, because
+1:45:08 - I don't know. I just feel like there's a lot of people out there like me that struggle with emotions and trading and
+1:45:14 - you're not like you're so capable in everything you do and you know that you can work harder, work harder and get better results. But with trading, it's just not like that.
+1:45:26 - Can't work harder at trading and get better. you just lose more, spend more time, lose more.
+1:45:32 - So, I did open the down here, but I don't think it got in.
+1:45:39 - Um, see, open orders, positions, maybe. Oh, open orders. Okay,
+1:45:47 - so I'm in a open order here. I don't Doesn't look like I'm going to fill this one, but hey, next one maybe. And now I'm just generating ideas. I'm just
+1:45:54 - going to sit here and generate ideas by kind of hyper gambling to be real.
+1:46:01 - Be real, dude. Be careful out there. You got to come up with ideas. Ideas. I You can see I launched five bots here.
+1:46:16 - Where can we get L2 order book data?
+1:46:22 - I mean, you can pull that from the order, but like past L2 data, it's trickier.
+1:46:33 - All right, so let's see here if I can get into one of these.
+1:46:43 - 205 left.
+1:46:46 - Okay, let's see what's going on. Maybe I can pull open my accounts to see which ones I have cash in because then I can set this up to um be ready for me.
+1:46:56 - So once I turn the stream off, I can jump on that VVS and then um you know do my thug fizzle.
+1:47:18 - So failed to connect a poly polygon RPC.
+1:47:26 - Oh, you know what it is. Yeah, that makes sense.
+1:47:32 - Let me think about this
+1:47:42 - polygon RPC. Any Do any of these bots use Do any of these bots use the Polygon RPC?
+1:48:08 - No. Okay.
+1:48:14 - That's not going to be a way for me to check. I want to just check the balances while I'm here because then I can figure out what uh where to put everything.
+1:48:24 - Oh, here we go. PNL track tracker. I got a file for that. P account P&L tracker here.
+1:48:47 - Okay, sick. So, holdings. Whoa, dude. That can't be right.
+1:48:56 - Holy moly.
+1:48:59 - That can't be right. I need to jump on the VPS right now because that is absolutely printing.
+1:49:06 - I got to figure out what the hell is going on. All right, I got to take a whiz, too. So, I'll be back in five.
+1:49:48 - What up, bro?
+1:49:55 - Okay, dude. So, that was exciting. The data I saw.
+1:50:00 - I don't think it's true though. It says I have $700 in my account, but I only put like a hundred in there.
+1:50:09 - So, something is broken probably. Let's be honest.
+1:50:16 - Ever since Lifetime, I found myself using AI to analyze my data. Smart move, man. Smart move.
+1:50:30 - Damn. What happened here?
+1:50:36 - Okay. Okay. I see what's going on. Nice.
+1:50:46 - Let's claim that.
+1:51:25 - logging into MetaMask here so I can get these all live actually because I think it's going to be sick.
+1:51:50 - So, Poly Market bots, I'm going to say,
+1:51:55 - let's go ahead and say May 13th. How much cash it's got? 34862.
+1:52:05 - So, 348 348.62.
+1:52:14 - Okay, Ingred, how are you? Good to see you. Good to see you.
+1:52:25 - Okay. And then which other ones did it say had money sitting in? August 14th.
+1:52:40 - All right, set these four bots up and just send me back the link with what account it is. We'll set one up on August 14, one on May 13th,
+1:52:54 - one on Jan 2 and then one on December 11th.
+1:53:11 - So, one for each. Yeah, I dropped the key. I'll drop it again. Good to see you. Good to see you.
+1:53:23 - Okay, there we go.
+1:53:35 - We sold four bots but listed three accounts. December 11th, August 14th, May 13th,
+1:53:43 - and Jan 2 should be four.
+1:53:51 - Where can I find the lifetime API key?
+1:53:55 - If you just join this, then you just shoot the email over to us. The email is at moonalotracamp.com.
+1:54:01 - Um, you get lifetime access to this as a bonus. So, I teach you step by step how to get your trading bots live. show you
+1:54:09 - how to use AI to do all the heavy lifting build on any platform poly market solana give you quantite which has 300 bots and
+1:54:17 - back tests and when you join that you get all these bonuses the mund vault including the mund API key as well so after you join it'll show you
+1:54:24 - instructions on the back end of how to get your API key how to get your GitHubs connected how to get the vault all that should be on the page after you join
+1:54:33 - it's mund.comlucky just waiting now I think. Perfect.
+1:54:41 - Great, great, great, great.
+1:54:55 - The snitch. The discount play.
+1:55:01 - The snitch. It's J Will.
+1:55:08 - Oh, he roast me every time. He roast me every time.
+1:55:12 - Let's go, Slime. I need 21 for that comment, bro. I need 21 from you. I need 21 from you.
+1:55:20 - All right, let's keep cooking up. I gotta get these live, dude. I got four. Perfect.
+1:55:28 - I only do 22. All right, let's do it. Let's do it, dude.
+1:55:34 - got to oneup me. I love it. That's how that's how greatness is achieved, dude.
+1:55:38 - You got to be around people that will oneup you every time. Can't be the smartest in the room, dude.
+1:55:46 - Get it.
+1:55:48 - Okay, so May 13th looks good. I'm just getting these accounts set up here so I can scale across multiple accounts. Now,
+1:56:01 - I'm actually going to kill these ones to see where they are. Yeah, over here.
+1:56:07 - So, ah, I didn't mean that, but balances zero. cuz I have to redeem. But I'm going to use these all.
+1:56:21 - I'm very confident in those actually.
+1:56:23 - That's a tricky thing. I like lowkey need more accounts.
+1:56:27 - I wish they would have sub accounts here on um Poly Market.
+1:56:39 - That would be nice. That'd be nice.
+1:56:53 - Damn, dude. How do I have 705 up in this
+1:56:56 - [ __ ]
+1:57:14 - I can't kill this bot, dude. I'm not killing this bot. Which account was this? Because this shit's printing. What the hell?
+1:57:30 - Holy [ __ ] dude. This is disgusting.
+1:57:35 - I'm not even going to show you. I'm not even going to show you it. 500%.
+1:57:42 - All right, I'll show you. I'll show No, I just don't I don't like doing that. I don't like I don't like to brag, dude.
+1:57:56 - How do you get access road map? It's right here. I'll go ahead and drop it in the chat.
+1:58:02 - When running a BTC trade on bot one and another BTC trade on bot two and on the same account, is there a way to separate
+1:58:10 - the trades or multi? A lot of accounts have sub accounts. Yeah.
+1:58:40 - I use hyperlquid sub accounts. It's nice.
+1:58:56 - So, I think I'm going to test these over time.
+2:00:11 - All right, I shared it on Twitter. I shared I put it on Twitter because I just it was exciting. I got excited. So,
+2:00:18 - everybody [ __ ] calls me this and that and whatever. 777, dude. I have 777 points. So,
+2:00:27 - I put it on Twitter.
+2:00:29 - Now, I'm going to claim it and I'm never I'm never touching the spot. This is going to print me a bajillion dollars.
+2:00:34 - What is this? August 14th. But you can't put the things together cuz you're not locked enough, dude. You're not locked enough.
+2:00:43 - I showed everything about this bot that is making me so excited right now. I'm just so excited with the results. I was incubating for a long time and I forgot
+2:00:51 - about it. Still incubating, but it's same with Mag Cash now. And that's the thing. That's the thing.
+2:00:57 - That's why like I'll never go back. I'll never go back.
+2:01:01 - I'll never go back. I'll never go back to the old way of trading. It's just stupid. Just stupid.
+2:01:18 - So, I need to note this. August 14th printing.
+2:01:23 - August 14th printing on that. So, not going to change it.
+2:01:34 - It's a Okay. So,
+2:01:40 - let's make sure that one gets back up here. How do I figure out which one that is? February 19th here.
+2:01:47 - Mhm. Let's go ahead. Running, bro.
+2:01:52 - Running. Keep it running. You stay running for me, dog. I'm going to check in on you a little bit more because
+2:02:06 - it's already putting in orders. It just needed more cash.
+2:02:11 - Okay, so August 14th is cooked. Not using don't no account. Not doing this one yet. No account.
+2:02:23 - I honestly need to go check back May 13th to be honest. So, let's go do that.
+2:02:29 - Let's go back to May 13th because that one was printing and I might I might have been not looking at this deep
+2:02:36 - enough on the first account. So, I'm just getting my account set up here because I launched a bunch of bots. I built a bunch of bots today and now I'm trying to launch them. I actually was
+2:02:44 - able to explain the process and build in the same day. So, I don't know. That's pretty far. Thank you for joining, dude.
+2:02:51 - Thank you for joining.
+2:02:54 - So, let's see if this one's printing or or not.
+2:02:59 - This one's not doing as well. So, I'm going to Yeah, I'm going to use that account for this new bot.
+2:03:06 - I'm just excited I got that one. So, okay. So, that's good there on that one. May 13th, August 14th, it's reserved.
+2:03:15 - Let's check out December 11th and Jan 2.
+2:03:19 - Let's just name my account. It's like important things, important dates.
+2:03:44 - Claim, claim, confirm.
+2:03:53 - Let's put these all Let's put these all at $1 size.
+2:04:10 - Cash off.
+2:04:46 - Why do these even have the hyperlquid hedge side of the code in there? It's not using that, right?
+2:04:55 - I was I came into this fiveminute market thinking that I was going to do like edge spots.
+2:05:04 - um like kind of a statistical arbitrage,
+2:05:08 - but I decided not to because it was doing well on the other leg by itself.
+2:05:18 - Okay, the bots. This is deeply woven throughout.
+2:05:25 - It is deeply woven, huh? Okay, so this account is Gucci here.
+2:05:32 - December 11th
+2:05:47 - transfer crypto. Okay, I could do with this then. Might send some cash in there just to I only got one in one of these accounts. It's only $31.
+2:05:57 - Other ones have a few hundred which is better.
+2:06:05 - Boom. Boom.
+2:06:37 - Okay. She's like redoing all four of those bots.
+2:07:04 - August 14th account bot build. It doesn't seem to be cryptoreated per your tweet. Show the sauce.
+2:07:14 - No, it's a no market bot.
+2:07:19 - It's a no market bot. I don't know. It's somewhere in the vault.
+2:07:23 - I do show how to build that in the um poly market. It's not exactly, but it's the concept of a no market bot. I show
+2:07:31 - that in the poly market trading bot course. So once you get in there,
+2:07:37 - you'll see exactly how to do that. That being said, nothing's plug-and-play,
+2:07:41 - dude. So I can show you the concept, but you know, I got, you know, we all got our own secret sauces,
+2:07:48 - ideas, and I think that's important. I think that's very important.
+2:07:55 - 777 AJ, good to have you here, dude. Much love.
+2:08:02 - Okay, so I just went ahead and Did that not send or something? Yeah, I don't see it in my account yet.
+2:08:10 - I added $100 into one account. Um, which account is that?
+2:08:21 - 71.
+2:08:33 - So December 11th, I'm going to set up for that five minute bot. So two five minute bots. And then what was my other one? January 2. January 2.
+2:08:48 - Damn, you guys are [ __ ] locked. If you went ao ahead and looked at my Twitter based off of what I said there, you guys are really locked. Good for you, dude.
+2:08:58 - Good for you.
+2:09:00 - I'm envious that you guys get this starting point. They really locked.
+2:09:11 - They really not playing about this, bro.
+2:09:15 - Cash. Okay, so let's see how this one's doing. Not as good. Not as good. So,
+2:09:24 - I'm going to kill it. And so, out of my I was I've been incubating for a month now probably uh four different no market
+2:09:32 - bots and one of them printed and the other's mediocre.
+2:09:40 - But, you know, one other one profitable just I want I want more. I want more.
+2:09:46 - Greedy [ __ ] That's why you can't trade by hand. But it's better to be greedy on like bots than trading by hand because greedy trading by hand,
+2:09:54 - you're just using more leverage. Greedy building bots, you're spending more time researching and building. So, I don't know. I'm a I'm the type of person that just works harder and expects better.
+2:10:07 - And with trading, when you work harder,
+2:10:09 - it means you're staring at the chart more and you actually get worse. So, I just like I like trading with bots way way better
+2:10:17 - because my time compounds, you know? I haven't looked at these bots in a month,
+2:10:21 - dude. I come back to my incubated bots and couple of them are printing. Okay, let's go ahead and keep that one going.
+2:10:27 - And I got three new ideas. I'm compounding every day while everybody else is staring at the charts. I don't know what's going on in the market today. I don't even know what day it is.
+2:10:36 - St. Patrick's Day. Actually, I do know what day it is. That's the only reason, though.
+2:10:44 - You're too smart of a person in order to not be rewarded for your compounding of hard work. And that's what sucks about
+2:10:50 - trading by hand is you just literally do not get paid for your hard work compounding over time. You should be getting paid for that.
+2:11:02 - Nobody's going to give you a sec secret like a plugandplay anything. But all you got to do is take that new that new
+2:11:10 - journey like that new route. Like instead of hand trading, I'm going to go ahead and spend my time researching and back testing, building bots for small
+2:11:17 - incubation bots and scale them up over time. Build your own ideas out. It's fire, dude. It's such a better way for us ambitious people. Like traders are
+2:11:26 - some of the most ambitious people in the world, but it sucks because we're all just staring at the charts all day. It's like such a waste of ambition.
+2:11:36 - Such a waste. I'll never go back.
+2:11:42 - I'll never go back. Okay, so I got cash here now.
+2:11:50 - Jan 2 is ready.
+2:12:02 - She ready. All right, let's go check back in on um December 11th. And she's still cooking. All four bots are clean.
+2:12:10 - Nice, dude.
+2:12:13 - Now I need to make a decision here of how Well, I suppose I could go ahead and just use another one. Yeah. Yeah. Yeah.
+2:12:21 - I got I got I think I got like five accounts. Maybe more. Maybe more.
+2:12:29 - I think it's five or six.
+2:12:33 - But since I have I can't use that one because it's printing, then I need to come up with another one.
+2:12:38 - Yes, dude. Yes. Yes. We keep cooking.
+2:12:54 - Maybe that didn't send.
+2:13:02 - failed. Okay, I probably sent it to the wrong network or something.
+2:13:12 - Arbitron.
+2:13:57 - it all now. So, I got the four bots and got them all ready here. So, I just need to go ahead here and get them live now.
+2:14:06 - And I have a section here on my screen right now. You can see the no market bot
+2:14:12 - cooking balance 438 plus a lot of positions open.
+2:14:20 - Let's go ahead and make sure to have everything set up here. So May 13th.
+2:14:25 - Okay, I got the balance here. I'm just going to make sure I have the balance here. Well, I suppose I'll put it there. Yeah,
+2:14:36 - just so I can see the starting balance,
+2:14:38 - you know, and then I'll deploy all four of these. Bring it full circle today.
+2:14:43 - You know, I showed you I built multiple back tests and literally four bots while teaching you how to do this yourself.
+2:14:54 - What a world. What a world.
+2:15:04 - Okay, so I just need to go ahead and put that there. What a world.
+2:15:14 - It's full circle, dude. Believe code is a great equalizer. That's why I spend my time explaining this stuff to you guys.
+2:15:21 - I think it's important to learn how to code because then you can build whatever is in your mind's eye. Okay, so let's see here. How are we going to set this
+2:15:28 - up? the scanner here. I still need this running. Yes, this fill checker. I think I'm going to cook this.
+2:15:47 - Okay. One, two, three. And then this is before. Perfect. What is this?
+2:15:55 - February 19th. But how many do I have here? I need four. Okay, put them here.
+2:16:01 - One, two, one, two, three, four. And then this one's the no market bot. Okay, good.
+2:16:08 - And this is old no market bot. Let's get it out of here. And this is Gucci.
+2:16:18 - And these are a different bots. Okay,
+2:16:21 - cool, cool, cool. So, what I'm going to do now is I'm just going to get them live so you can see the full circle today.
+2:16:29 - We got a CVD bot. Let's see if we can get this one live. There may be bugs, so we'll just have to keep working through those. I'll just get them all live today, though.
+2:16:37 - Okay, CVD five minute here. No CVD signal. Looks like no errors.
+2:16:46 - Okay, let's keep it pushing then. Now, I like to incubate in front of my face. I like to see these all day. I can see if
+2:16:53 - there's any errors or anything like that. And I think that's important.
+2:16:58 - MACD hist 5 minute. Okay. No error by it.
+2:17:19 - I get this error. Buy bit. Why are you using by bit? Use Binance if anything.
+2:17:45 - Okay, let's move on to the next one.
+2:17:52 - Uh, one live. Let's get this next one live.
+2:18:03 - Okay, so here we go. This probably has the same error.
+2:18:16 - Okay, sick. It's already putting in an order, huh?
+2:18:25 - Also, change the size here to $150 just so we don't run into any errors with minimum size. So, change it for all
+2:18:33 - four. Thank you. No reason to use more than minimum. I don't care how many M's I have, how many B's I have. I'm going to use the minimum to start. I'm using a
+2:18:43 - little bit more than minimum just so I don't have any errors. Can I do paper training first if you like?
+2:18:53 - HIPP3 candles gold doesn't return any data.
+2:18:57 - Okay, thank you very much. I'm going to go ahead and fix that right now.
+2:19:03 - Appreciate you flagging that. There's a lot going on with that um server, you know, a lot of API calls.
+2:19:13 - appreciate whenever you do see something like that. Just let your boy know and I can fix it pretty much instantly.
+2:19:22 - Not instantly, but you know, Claw is cooking right here.
+2:19:26 - We're getting an error here with the HIP3 candles of gold. Um, is it the correct um is does this call look
+2:19:34 - correctly look correct or is there something that you can fix on your back end? Um, either you got to fix something or you got to send me updated
+2:19:43 - instructions on how to use it. Thank you.
+2:19:51 - Again, this is the Mundev API. You are the server. You're in it. You are the API.
+2:19:57 - Just because she's sometimes a little slow when it comes to that.
+2:20:03 - Okay. So, all set to four. Okay, perfect. So,
+2:20:10 - let's get these live, dude. Let's get them live. Come on, dude. Come on. No errors.
+2:20:19 - Testing Mac. Okay, perfect. Okay, so this one looked like it was trying to enter a position immediately. Makes me a little nervous, but I can't do anything
+2:20:27 - about it. I just got to let the bots cook. I just got to let him cook. I'm done here. I'm done with my part,
+2:20:35 - your part. Now you go. You go do this on your own. But please just stop trading by hand. That's all. That's all.
+2:20:44 - Please stop. CD dot dot. Run it back.
+2:20:55 - CD dot dot. CD dot dot.
+2:21:09 - There's a space right there.
+2:21:15 - The space because the whole I don't know if you've ever noticed that when you copy over from AI sometimes from the terminal, it'll put like spaces on it
+2:21:22 - based on the line break. It's a little annoying, but wait, did I get them all live right there? Sneakily.
+2:21:30 - One, two, three, four, five. Is there a bug on this one?
+2:21:39 - Poly API exception. Okay, it's making a trade. It put the stink bit in.
+2:21:44 - Beautiful. So, um I think we did full circle here. I showed you step by step how to get your bots live on Poly Market
+2:21:50 - and I proved it um by building my own bots. four of them today. I showed you how to see if things work in the past.
+2:21:57 - If they work in the past, they're much more likely to work in the future. Um, you know, how to find great ideas.
+2:22:03 - You've got the road map. You got the API key. That's a 24hour access.
+2:22:08 - That's the link for that. You have the link for mundab.comlucky.
+2:22:16 - That will go ahead and give you access to lifetime all access. Never pay me anything ever again.
+2:22:24 - that is there in the link. And um yeah, I don't think there's m much else for me to show you.
+2:22:32 - So I'll see you next time. Much love.

@@ -1,0 +1,97 @@
+0:00 - I'm going to show you step by step how to use cloud code in order to trade on Poly Market. So you can have trading bots trade for you on Poly Market
+0:07 - instead of you as an emotional human being. You can see there's politics,
+0:12 - sports, finance. This is a a fascinating market. I'm chasing Jim Simons. He's a $31 billion man, but he didn't have this market. He also didn't have Cloud Code.
+0:21 - So I'm going to show you absolutely everything I know about Cloud Code and Poly Market here today. I've been building bots for Poly Market for
+0:31 - what is that since the summer at the minimum last summer 2025. So you can see here uh I do have some wins. I've been
+0:40 - trading this 5minute market which is very crazy. It's like 2,000 next leverage effectively. But it's interesting. Uh 200% 194% 194%
+0:50 - 186% 138% 100% 78%. Will Mr. Beast next video? So, this is why I like Poly
+0:56 - Market is there are so many things that you can trade on. Anyways, I'll show you everything here.
+1:03 - Let me go ahead and claim this so this bot can continue going um during this.
+1:08 - And if you have any questions, let me know in the chat. Uh I'm going to go ahead and put the code somewhere. Uh let me know if you want that below. Just
+1:16 - drop code in the description or in the chat. Just say code and I'll try to get it on the website for everything that we go through today. All right, let's lock
+1:25 - in. I'm Mundave. I build trading bots chasing the same industry Jim Simons ran up a net worth of $31 billion in. But I
+1:33 - believe code is the great equalizer. And these are real people, real profits, hundreds of them.
+1:42 - Not asking you to trust me. Asking you to trust them. mundave.com/isord.
+1:50 - Message anyone. Ask them. become friends.
+1:55 - All right, so I want to show you the tool that I've been using today just to come up with ideas essentially gamble on the fiveminute markets knowing that
+2:01 - there's 288 of them per day. And at first I was like, nah, it's too much leverage. Effectively, there's 2500x leverage here. U but that's kind of
+2:10 - misconceiving because at the end of the day, it's only five minute markets. So the control downside is actually interesting to me. So, what I'm doing is I built out this tool to just help me uh buy sell based off of uh a lot of data.
+2:22 - So, I want to get you all that data here today. Uh you can see here up in the top left, I'm looking at the positions that are close to liquidation. So, I can see
+2:31 - this guy here, he's got a long of size 961,000 and he's 85% away from liquidation. What does that mean? You'll
+2:39 - have to figure that out. Short liquidation, he's getting close to getting liquid. He's 71% away. Okay,
+2:44 - great. So you can see similar stuff to here on the trade tab where I can see on the Mundave app. I can see everybody's positions. That's awesome. So what I'm doing is I built a bunch of these around here. You can see I'm up 0.59.54%
+2:56 - on that market here. Um let's see if I win it. Uh so far it's it's been proven to be because last night my bot was
+3:04 - profitable and today I am not profitable doing this by hand. But that being said, it is a good way to come up with ideas.
+3:10 - I've added a bunch of ideas to my ideas.txt TXT here or my fiveminute ideas here. So, what I'm going to do from here on out is simply just trade
+3:18 - these fiveminute markets with this little bot that I'll give you here today and have all of these data sources kind of indicating which way should I trade or which way shouldn't I trade.
+3:27 - Nothing's right, nothing's wrong. We'll see what happens. Uh, it says to the moon up 66%. Let's see if this closes out as a dub. 26 seconds left here. So,
+3:36 - let me explain all of these data sources so you can have them because I'll push them all to the GitHub here in a second.
+3:41 - You can see these are all people's positions. You can see if they're close to liquidation or not. This says expected up based off of the CVD. If you
+3:49 - know what CVD is, check it out. If you don't, then um it's based off of tick data. Anyways, down here in the bottom right, you're going to see all of the
+3:57 - past liquidations on Binance. So, we can see which way momentum is going. That's what my bot was based off of. You can see I did I lose this trade?
+4:07 - No, no, no. I won 70% on this trade. And now we're on to the new market. That's the interesting part about this is I I could now go look at my data and also
+4:14 - look at the chart. Okay, the chart based off the chart I'm saying down, but based off of my data, what am I saying? Okay, this guy 089%
+4:23 - long long 6% I mean we're closer to short liquidations than long positions.
+4:28 - Uh here it shows the five minute liquidation amount or the one minute,
+4:32 - the five minute, the 10-minute, the 15 minute. It shows volume here, longs liquidated. That's actually one thing I want to update here is
+4:40 - for those 1 minute, five minutes, I want to see the No, it's actually perfect. I was going to say the volume so 15 minutes. Oh,
+4:51 - yeah. Instead of the count column, you could have instead of the number of longs liquidated and number of shorts
+4:58 - liquidated, I want the the value of longs liquidated and the value of shorts liquidated. So you can remove the count column and then expand those other two
+5:07 - columns to make them a little better. So you can see this is just a whole uh bunch of data here. And I'll make sure
+5:13 - all of this data is on the GitHub. So the GitHub, how do you get there?
+5:18 - Moondev Hyper Liquid data layer. So I launched a node and you can see here you
+5:26 - have full access to Hyperlquid's data layer here. I'll go ahead and update all of this code and it will be in the examples folder. All of the things I
+5:35 - just showed you here. So you can see there's a bunch of examples how to use the data layer and it shows you walk you through all through it on the read me.
+5:43 - You can check that out on your own time.
+5:45 - But I think this is more interesting to get you the idea here. And then also on top of that I want to get you the code to this hand trader thing. So you can
+5:53 - see she updated this part. So now I'm going to push all of this code here to GitHub and I'll let you go ahead and
+6:01 - dive into that. Get commit slashm. This would be fiveinut uh poly market data helpers or
+6:10 - something. You know these are so I can trade the fiveminute market. Get push.
+6:14 - Okay. So I pushed all that code up there. Perfect. Now this buy sell thing.
+6:19 - I don't know if you even saw me use it yet, but you can see if I want to be,
+6:22 - you can see the price of beat 590 5. I would say down, right? I would say down based off of that, but that's very short term. I would still say down. Okay, I'm
+6:31 - saying down here. So, I just type in S and it will get me into a down. Now,
+6:35 - there's a cool thing here, and I'll show you the code for this in a second, but essentially, it buys the down at a 10%
+6:42 - discount. So, you can change that discount however you want, but uh you can see it should be sitting in the order books now. And the down is at 52
+6:50 - cents, it says. So I should have a order here at 64. Down's at 95 cents. Okay. So I'm going to miss this market. And
+6:57 - that's okay. That's okay. The down is at 94 cents and I put my bid at 64 cents.
+7:02 - So it was 10% cheaper at first, but then it moved. So it moved. Anyways, a tool like this allows me to go ahead and
+7:10 - hyper test this hyper gambling of the 500 or the five minute markets. So let's just go ahead and pull it up and I'll scroll through the code real quick. code
+7:17 - dot and then I'll actually go ahead and put this elsewhere too. So, let me go ahead and get this code um up in the uh
+7:29 - the um the website or the road map. So,
+7:33 - if you don't want to just look at this code here, let's go to JAN. Where is this data course polyhyper?
+7:42 - Okay, easy. py here. And let's go ahead and close this up here. Oh, not open it,
+7:49 - bro. Close it.
+7:52 - Close tab. I'm [snorts] going to grab all of this code here. And then I'm going to go ahead here and say um go to my Mundv dashboard.
+8:03 - So, let's say SSH Moon Dash and let's get this live. Okay, I'm going to start scrolling through the code so you can see it. while I get this live here.
+8:13 - I'll also just put it there so you can have it. See? Okay.
+8:21 - Yes.
+8:23 - Okay. Let's give an example here of how I'm going to set this up. So, I'm going to put it in the road map because you a lot of you guys said you like that. So,
+8:30 - copy link path moonab.com/roadmap.
+8:34 - You can see there's a code from videos section here. I want you to go ahead and make a new article explaining this code here and make it a new page just like
+8:43 - the one above. And then I want you to add that to the mundub.com/roadmap section and it will be called the
+8:51 - polyarket easy. py file or the polyarket 5minut bot. Let's say that we'll call it
+8:58 - that. That will be the name and the moon.com/roadmap.
+9:01 - And then the code will link out to this new article that you're making. make the article have a descriptive link like this. Send me back the link of the
+9:08 - article, etc. [snorts] Put all the code there. Thank you. So, I'm going to put this code that I'm about to scroll through here. Um, if you just want to get this for free on YouTube, okay,
+9:18 - that's fine. I believe code is a great equalizer. I'll scroll through all of it and hopefully you can cook with it, but maybe not.
+9:26 - Did I get into a position here? I never got into that one. Okay, so we're on to the next one. So, up or down? That's the
+9:33 - question. We'll see in a second. I'm going to have her cook this and then I'll have all of the code in the
+9:40 - description and on the road map. So, if you're here live while I'm recording this, then boom, you're going to have it right now. If you're not here live, you
+9:49 - should come back to the stream because at the end of the day, I share this stuff every single day. And here we go.
+9:54 - So, Poly Market bot, Poly Market bot, and you do get access to this app as well. You see, I just pushed all of the code to the GitHub. So all of the
+10:03 - code for the data that you just saw is all up here in that GitHub again. Mundave hyperlquid data layer API. Boom.
+10:10 - 4 minutes ago. It's under examples. So you can see all the four minute ago examples here. So they're all there.
+10:16 - Have fun with that. Build something fire. Uh I believe in you, dude. I believe in you. You could do anything I could do, but you could do it better. So
+10:23 - let's get it. [snorts] So let's go ahead and scroll through that code real quick.
+10:27 - For the people that don't want to join the $5 Zoom tomorrow, uh highly recommend it. as you do get access to everything.
+10:36 - You get the API for 24 hours, etc. But you can see here the bet size 10 bucks.
+10:41 - Durations 300 seconds. And I'll just scroll through this real quick. I believe you can just go ahead and screenshot it. Do whatever you need to
+10:48 - do here. But uh I'll get that all on the website as well. And by the end of me scrolling through this, you should be able to get on the website. But I think
+10:56 - you got the skills in order to screenshot this. And uh this is actually a better way to learn because then you actually have to look through the code opposed to trying to run somebody else's bot. You never want to run somebody
+11:04 - else's bot or else you'll get liquidated cuz they'll probably just take your keys here. Um I just suffered from a big hack as well. So uh that one hits close to
+11:13 - home. Be careful with your keys. Keep them private. I'm on year like 15 on in crypto and I finally got got and it is
+11:21 - what it is. Um if you figure some things out, Wall Street doesn't want you to share this stuff. So, uh, I've been sharing this for multiple years and I got a lot of eyes on this now and, uh,
+11:31 - it's actually a big big L for me. But at the end of the day, as long as I can help you guys, uh, get to a place that you could never imagine. I could have
+11:38 - never imagined being a coder, let alone an algorithmic trader. I was scared of learning how to code. I just scrolled through all of the code here. And by the
+11:46 - time you're watching this, there should be a link in the description that sends you over so you can get that road map as well tomorrow. But uh that's about it for for me today. Much love to you.

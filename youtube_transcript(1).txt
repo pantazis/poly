@@ -1,0 +1,158 @@
+0:00 - I'm going to show you step by step how to actually build a poly market trading bot. Not some gambling thing here by
+0:07 - hand picking things non-algorithm. I'm going to show you how to use robots to trade Poly Market for you. So, first
+0:15 - things first, I have 10 cents left in my account because I got a bunch to claim here. So, you can see I have a bunch of bots running. I've helped a lot of people do this. You can see 178% return,
+0:27 - 163% return, 50% return, 150% return,
+0:31 - 52% return, 96% return, 150%. You get the point here. 186, 170% return. So,
+0:38 - I'm going to show you in this short training exactly how to build your own trading bot for Poly Market because I think just like trading on with stocks
+0:48 - or futures or crypto, this gets a little emotional. And if you can remove the emotions out of your trading, you're going to be a much better trader. And
+0:56 - that's just been proven over and over and over again by the best traders in the world. They are all algorithmic traders. And let's just make that easy.
+1:04 - They build trading bots. I mean, you look at Jim Simons. He ran up a net worth of $31 billion.
+1:10 - And he did 100% based off of trading bots. And we have an opportunity that he never had. He did not have access to
+1:18 - Poly Market. Poly market is very cool because at the end of the day we're able to trade on what's the highest temperature in Seattle?
+1:28 - Will the highest temperature in Paris be?
+1:31 - Will Elon Musk post 140? You know, these things are awesome. So, lock in, make sure to sub, and we will go ahead and
+1:39 - show you step by step exactly how to build your own bot. You can see I'm just processing my withdrawals here or not withdrawals but my claims so I have
+1:47 - enough cash to show you absolutely everything throughout this lock in. I'm Mundev. I build trading bots chasing the
+1:54 - same edge Jim Simons used to build a net worth of $31 billion.
+2:00 - But I believe code is the great equalizer. And these people figured that out. They're real people, real profits,
+2:09 - hundreds of them. I'm not asking you to trust me. I'm asking you to trust them.
+2:16 - mundev.com/isord. Message anyone. Ask them yourself.
+2:23 - Become a friend.
+2:26 - All right. So, let's get this live first off. So, I got the Poly Market bot. I'll explain it here in a second. U I got a couple things to explain actually. And all the code is already on the website.
+2:35 - I'll show that to you as later later as well. Python run it. Okay, double Python. That's not going to work. Let's say Python. Run it here. And then you
+2:43 - can see, okay, Mundav configuration here. Hyperlquid balance. Okay, there's a balance there. Um, you can see here
+2:51 - it's looking for liquidation range of 25,000 to 100,000. And then it's going to have an inverse hedge. Oh,
+2:58 - interesting. 3x leverage. I didn't even think about that. I need to think about that. Total exposure per trade 25. No
+3:05 - trade history thus far. So, the bot is live. You can see there's been BTC licks of $914
+3:13 - uh on the long side and then on the short side there is no there has not been any liquidation. So what this tells
+3:21 - me is this dude. Well, you don't even know the strategy. So I should probably just tell you the strategy first. So
+3:28 - let's go ahead and dive into the strategy real quick. So this is an idea.
+3:33 - It's not guaranteed [clears throat] to work by any means. I'm just a data dog like yourself testing ideas and you know my process now it's the um RBI process research back test and then implement.
+3:44 - So let's go to um trending.
+3:48 - What about ending soon? How do we get there?
+3:51 - It's the five minute markets. So crypto I don't even know how to get there dude.
+4:02 - Here we go. Five minute up or down. So,
+4:04 - I'm only trading this and you can see she's waiting 84 seconds. So, she's probably waiting by now. Anyways,
+4:11 - essentially what it's looking for. Okay,
+4:13 - you can see new 5minute window. So, I can see when the people get liquidated,
+4:17 - right? So, I can see their positions and when they get liquidated. So, right here, this guy's getting liquidated for $4.4 million when the price goes down
+4:25 - 6%. So, when my thing sees there's a bunch of liquidations, you can see there's only $914 of liquidations. Okay, but this guy
+4:33 - literally gets liquidated for $4.4 million in6%. So if the price goes down a little bit, my thing should show much more. You can see it's 5,000 400
+4:42 - liquidations. It's breaking down a little bit. Okay, the price is going down. Okay, that's what it's saying,
+4:46 - dude. Um it's not going down, but there were liquidations. It is what it is. This is the data from the exchanges. Um I get
+4:55 - this on my API all exchanges endpoint. A lot of you guys have the access to that already, but um the strategy is when there's a bunch of liquidations.
+5:06 - It's going to assume there's going to be more liquidations. You can see the price went up and then there's a short liquidation, $142.
+5:13 - So, not only can I see people's positions, I can see when they get liquidated. So, that's two useful data points that took me multiple years to
+5:20 - get to. So, I'm glad you're here today because you just sped run like 2, three,
+5:25 - four years. I'm on year five here, but um none of these bots are just plug-and-play by any means. These are just ideas. And like I said, I did put
+5:33 - the code already here um on the road map. A lot of you guys have this road map. And if you don't have the road map,
+5:40 - I just give it to people who show up at the Zooms. A lot of people get the Zooms for free. The links are somewhere around here, but the Zoom calls we do every day. Um you guys, I just keep trying to reward you as much as possible.
+5:49 - Moonab.com, you can just see that there's a link in the description or whatever. Zoom 8 to 10:00 a.m. I answer all questions in the Zoom chat and I
+5:58 - give you a bunch of bonuses and one of those bonuses you get the hyperlquid data API what I'm using here for this but also the algo trade uh the algo trading road map. So you get the app,
+6:06 - the AI, the API, and in that road map here. If you scroll down, I'm going to keep doing this. If you just type in code below, I'll keep doing this. I
+6:14 - don't know if you guys are interested in me dropping code. Um, so just in the comments, whatever, put code and that will kind of be a signal to me that you
+6:21 - guys do like when I drop code inside the road map like this. And like I said, you get the road map when you do show up to the Zoom. And you can see all of the
+6:28 - everything's explained about this idea and this bot. Of course, it's not plugandplay, but I do give you all my code here. So, I'm also scrolling
+6:36 - through all the code right now in case you're a broke boy and you don't want to join the $5 Zoom. It is what it is. Let me scroll through all of it. I've explained the idea here, but there's
+6:44 - something I need to tell you that's crazy. So, I'll have AI explain it cuz she explains it better than me. But, okay. So, the idea behind this strategy,
+6:52 - and you're seeing all the code here for free on YouTube because I believe code is a great equalizer, but essentially what it's doing is it's saying, "Hey,
+7:00 - there's been some liquidations here. You can see 4,500 liquidations. Once there's 25,000 liquidations, and that's an arbitrary number. I did not test that.
+7:08 - That's just an idea. That's a guess.
+7:10 - Once there's 25,000 liquidations, let me go ahead and take the trade here. So, if it's if it's short liquidations, that
+7:18 - mean price is going up. I want to buy up. If it's long liquidation, that mean price is going down. I want to buy down. Does that work? I don't know. We'll see.
+7:26 - We'll see. But I'm just a researcher just like you. So, if I give you all the code that I took a long time to build,
+7:33 - then boom, you can go ahead and test out your own ideas. Somebody asked me this morning, Moon, you found something that prints on the 15-minute market. And I said, no, I think it's gambling the
+7:41 - 15-minute market. So, what do you think I think about the five-minute market? He said he's almost at the verge of finding something profitable on the 15minute poly market,
+7:51 - which is crazy because he's been building with me here in this zoom for multiple weeks now. So, my thesis is coming true. I believe code is a great
+7:58 - equalizer. And if I share absolutely every single line of code in some somewhat way, whether it's verbally or please don't just copy paste and run
+8:06 - this, but this is hard work. This is years and years of work. You can see it has hyperlquid stuff in here. And that's
+8:13 - because I use hyperlquid in this strategy. I mentioned the first part of the strategy, but I only want to tell the whole strategy to people who are
+8:21 - actually locked in. So, now that you've been here for a few minutes, you know the first part of the strategy now,
+8:26 - right? It's a momentum strategy based on liquidation. So when somebody gets liquidated up to $25,000, okay, between 25 and
+8:35 - $100,000, that's my arbitrary numbers I put there. Let's go ahead and say it's going to have some momentum. Remember,
+8:41 - it's only five minute markets, so this is a quick trade. That being said, the second half of the trade is a little
+8:47 - hedge with Hyperlid. So on the other side of this trade, if I'm long, I'll be short on Hyperlid. That's why I'm giving you all my Hyperlquid code here as well.
+8:57 - Like I said, the link is in the description if you want to just have access to all this. But um I'll see you guys tomorrow at the Zoom,
+9:06 - but I need to go ahead and talk about this really quickly because this is insane. This is insane. If you think 40x
+9:13 - leverage is insane and you think trading with 40x leverage is kind of crazy, well, these markets are even more crazy.
+9:19 - You can see this guy's using 40x leverage, 40x leverage, 40x leverage. I rarely see people have success with that much leverage. So, I'm not a big believer in that much leverage, 40x.
+9:30 - Now, let's talk about what these 15-minute markets are. That's 1400x.
+9:35 - And on these five minute markets, it's effectively, she said, it's effectively
+9:42 - five minute leverage is 2425x leverage. So, the five-minute binary markets, you're looking at roughly 24,425 effective leverage.
+9:53 - Not 40x leverage. 2500. Dude, that's crazy. Here's a simple breakdown. You put up say $100 at 50x leverage that
+10:02 - controls $5,000 worth of BTC. This is on Hyperlquid. Just to get you caught up to speed here. What this means, this 50x leverage, 40x leverage, 2,000x leverage.
+10:12 - If BTC moves.1% in 15 minutes, you make $5. So, you risk $100 $100 to make $5.
+10:20 - That's a 5% return on your money. Now, on Poly Market, the 15-minute binaries,
+10:25 - and remember, we're doing 3x more levers than this because we're using the fiveminute markets now, and that's crazy. So, be careful. You put a $100
+10:32 - betting BTC goes up in 15 minutes. The odds are roughly 50/50, right? On Poly Market, it's a binary market. So, you're
+10:39 - paying about $50 for a contract that pays $100. If BTC goes up even 1 cent, you win. You doubled your money. 100%
+10:47 - return. That's the key difference on Hyperlid. Your profit is proportional to how much price moves. Small move equals
+10:54 - small profit. On a binary bet, you either win or lose the full amount. It doesn't matter if BTC goes up. 0.1% or
+11:03 - 5%. You get paid the same. The size is the size of the move is irrelevant. Only
+11:10 - the direction matters. So in those 15 minutes where BTC barely moves and hyperlquid trader makes 5% on their
+11:17 - levered position, the binary trader who called the direction makes 100%. That's where the 1400% comes from. The binary
+11:26 - pays you as if the move was massive even when it was just tiny. Why it gets even crazier on 5 minutes. In 5 minutes BTC moves even less and then in 15 minutes.
+11:38 - So the hyperlquid trader makes even less on the tiny move. But the binary trader,
+11:42 - which is Poly Market, still gets paid the full amount for being right. The smaller the time frame, the smaller the expected move. So the more the binary
+11:51 - payout dwarfs what you'd make regular leverage trade, that's why the effective leverage jumps from 1,400 to 2400.
+12:00 - TLDDR binary bets you pay a fixed amount for being right about the direction.
+12:07 - Regular leverage pays you based on how far the price moves. On short time frames, price barely moves. So, regular
+12:15 - leverage makes pennies while binary bets pays dollars. The gap is the effective leverage.
+12:22 - Now, what are the pros and cons of this?
+12:25 - I mean, this is probably getting a lot of people excited having that much leverage, but I honestly I hate that much leverage. 40x leverage is too much.
+12:34 - So 2,400x leverage is way too much. That being said,
+12:40 - edge is edge. And if you have an edge and you can use 2,400x leverage, run it up, right?
+12:48 - And I do love the premise here that you get 100% back, right? If a 0001% move
+12:55 - while Hyperlid people will be over there like tripping over the charts all day,
+13:00 - you got five minutes in and out. You can make 100 100%. That's crazy. That's crazy. That's something crazy about these markets, dude. Okay. And we got
+13:08 - her cooking on the server over here as well. Let's see what she said. She said the tick data endpoint already supports 30 and 60-day durations, but there's no
+13:15 - access control getting uh getting longer. Okay.
+13:20 - Are you sure then, Shorty? Because historical data here.
+13:30 - Are you sure you don't have the 60 days?
+13:31 - because my server just said you do referring to the tick data.
+13:41 - Okay, let's see what she says here. And you already have all the code and everything. So, um yeah, just let me know code below if you do want me to keep dropping the code on a website like
+13:50 - that. So, exactly mud and that's the right way to think about it. Here's the honest breakdown. Pros defined risk. You can never lose more than your bet on
+13:56 - Hyperlquid at 50x. A bad move can liquidate your whole account. On a binary, you lose what you put in. No liquidation cascades, no funding rates
+14:04 - eating your alive, eating you alive overnight. I actually I'm kind of convincing myself on these markets. As I I'm trying to say, it's sketch. I kind
+14:14 - of like that. It's five minutes in and out.
+14:18 - What are the fees these days? Poly market just implemented bigger fees to these 15-minute markets. What are they exactly? Can you do your research and
+14:26 - give me the precise amount of fees entry and exit and what that is compared to Hyperlquid's fees? Thank you.
+14:34 - While I'm trying to say it's way too much leverage, I'm just like five minutes. So, you can make a bet on five minute markets, be in and out, and then
+14:42 - you can hit 100% and be you could hit more than 100%. I mean, if you buy low enough, but yeah, these can be like hundreds of percent. You saw at the start of this a claim like 150% 200%
+14:53 - 300%.
+14:56 - Defined risk. You can never lose more than you bet. Edge amplification. If your ML model predicts five minute direction at 53% accuracy on Hyperlid,
+15:04 - that tiny edge barely makes you anything because the moves are so small. On a binary, that same 53% edge prints money.
+15:12 - Dude, this is actually interesting now cuz you and I I mean, we could do this a day. We could
+15:19 - do we can figure this out today. Just let me know. Let me know below, dude.
+15:23 - Let me know if put Poly Market below or something. I mean, do y'all want me to cook on Poly Mark and cook? I can cook everywhere, dude. I got bots running
+15:30 - everywhere currently. So, it's just about for me, it's like where do I focus the the time and the energy?
+15:40 - I like this though. Now, it's funny. I always do this. I come into these trainings here with one mindset and I
+15:48 - leave with another. But that's literally what you're supposed to do in life. You got to you got to hold your opinions loosely, right? You can prove them
+15:57 - differently. Prove it differently. And now obviously I'll probably go trade this and get smoked and then be like, "Nah, f these markets." But we'll see.
+16:05 - I'm a data dog and so are you. Just got to test things. People are going to talk about it. Just test it yourself. Simplicity.
+16:14 - You don't care about take profits, stop losses, position sizing relative to volatility. Holy smokes, dude. That's
+16:21 - another great point for beginners because execution is a it's a it's a B,
+16:27 - dude. It's a lot. It's a lot. Execution is half the game.
+16:32 - Stop losses, position sizing, take profits, risk control, stuff gets too volatile.
+16:39 - Dude, this is in and out in five minutes. I'm not trying to pitch these to you now. I think it's very dangerous.
+16:43 - Poly market bot. Poly market um hedgebot. Yeah, dude.
+16:50 - Cuz remember, if you read this article here, you'll understand the strategy.
+16:54 - It's not a it's not onelegged naked strategy, okay? Simplicity. You don't care about take profits. 288 shots per
+17:01 - day. This is high frequency. High frequency trading. So, high frequency trading here on Poly Market. Cons, that leverage cuts both ways. 2400 leverage
+17:10 - means you're essentially flipping coins for your whole bet each time. On Hyperlquid, if you're wrong by 0001%,
+17:17 - you lose almost nothing. On binary, you lose everything.
+17:21 - [laughter]
+17:22 - [gasps]
+17:22 - Oh my god. No partial wins on Hyperlid.
+17:25 - If you're kind of right, price goes your way a little, you still profit a little.
+17:29 - On a binary, being wrong by one cent is the same as being wrong by $1,000.
+17:36 - That's a good thing, though. That's a good thing. There's almost no almost right the 50/50 trap. Without a real edge, you're just paying the spread to
+17:44 - Poly Market and slowly bleeding. At 288 bets per day, a 49% win rate drains you
+17:51 - fast. The frequency that helps you with the edge destroys you without it. By the way, I forgot to mention the entire
+17:59 - strategy. I gave you probably 75% of the strategy. There is a big piece that is written in that article that I just
+18:08 - don't have time to go over anymore. The real talk though, the effective leverage sounds insane, but the flip but the flip
+18:15 - side is your risk per trade is 100% of that trade on Hyperlid at 50x. Your risk per trade might be 2 to 5% with a
+18:24 - stop-loss. So, the leverage comparison is a bit misleading. It's really just a different risk structure. The play here
+18:30 - isn't use 2,400x leverage on your whole account. It's bet tiny amounts with a proven edge hundreds of times a day and
+18:38 - let the math compound. That's where the ML direction prediction work becomes the whole game. Without the edge, it's just a casino.
+18:50 - with it.

@@ -1,0 +1,106 @@
+0:00 - These poly market five minute BTC up down markets combined with opus 4.6 have
+0:07 - been interesting to say the least. I've been testing all different types of ideas mostly bots. I used some actual
+0:16 - open 4.6 to do some predicting as well and she did all right to be honest. This is this morning 317%
+0:24 - 203% 203% 122%. Now, I'm an algorithmic trader. So, my whole idea is I'm Mundev.
+0:32 - I build trading bots chasing the same edge Jim Simons used to build a net worth of $31 billion.
+0:40 - But I believe code is the great equalizer. And these people figured that out. They're real people, real profits,
+0:48 - hundreds of them. I'm not asking you to trust me. I'm asking you to trust them.
+0:55 - mundave.com/isord. Message anyone, ask them yourself,
+1:03 - become a friend.
+1:05 - All right, so clearly the next iteration for this poly market stuff, the fiveminute markets, um, you saw some of the results the last week or so, the clear next iteration was to use a
+1:14 - machine learning model. Now, before LLMs were called AI, machine learning was called AI. So machine learning is taking a bunch of data and laying machines chop
+1:23 - it up, chew it up, see all the different things that are happening, the patterns within it. And um this is what has been used in trading for over a decade for
+1:32 - sure, probably longer. I know Jim Simons did a lot of machine learning, and you know, I'm chasing Jim Simons, a $31 billion man. So um it's only appropriate
+1:41 - that we explore a few different machine learning models here. So the first one is in the top left here. I used XG
+1:47 - Boost. I gave it 100 weeks of one minute data so it could make these five minute markets. And you're asking how do you get data? Well, I just threw that in the
+1:56 - chat. If you're inside of the Zoom call right now, you have moon.com/roadmap.
+2:02 - And if you're not, then just come back another time and you know, just come to the Zoom call and I'll give you the keys and stuff. But at the bottom here, this is where I got the data. I said crypto data. Change this to one minute here.
+2:12 - And you can see, boom, four weeks. Okay,
+2:15 - I did 100 weeks. But let's go ahead and get you the code. Let's show you all the models. Let's see the results. There's four different models. The XG Boost was
+2:22 - the first one here. Then I used light GBM here. And then we used TCN here. And then a different alteration like Tabet
+2:30 - TCN. So four different models. We'll go over all the results right now.
+2:35 - So these took a long time to run. So this is literally taking if you spend 10 minutes with me, you're going to get all of the information needed from actual
+2:44 - machine learning models that are run on a computer that's very expensive and it took all day. So this is literally getting your time back. If you do want to stick around if you can't, hey, uh,
+2:54 - come back some other time, make sure to subscribe, etc. So let's go ahead and get all these models in here and get the TLDDR. And then at the end of this, I'll
+3:01 - just scroll through all the code because hey, good, bad, or ugly, it doesn't really matter because at the end of the day, if you wanted to do this, it would take you uh well, it took me 24 hours on a pretty expensive computer. Not crazy.
+3:12 - It's a MacBook that's like a MacBook M3 Max Pro, whatever. It's like $5,000. So, I'm sure some of you guys have that.
+3:20 - But, um, if I can turn my time and my tests into way less time for you, I think that turns out to be a very good
+3:27 - tutorial for you. and um it helps the world. I believe code is a great equalizer. Uh the things that I figure out, nobody's going to share with you.
+3:34 - If I was doing this at a Wall Street firm right now, they would never share this stuff with you. So, what I want to go ahead and do is give her all four models and we'll go over all the results
+3:43 - here together and then we can go ahead and I'll give you all the code and you can kind of go build however you'd like on this. Ideally, you can get even better results than I do here. Okay,
+3:54 - these are the four models, the final tests here of all four models. What I want you to do is shortly and concisely go ahead and explain
+4:03 - the results of each model, any edge that you see in any model and then on top of that uh give me some sort of table here
+4:10 - at the end that it makes it visually uh easy for a data scientist like myself and everybody watching to analyze to see
+4:18 - if this was good or bad and which was best and what alpha we got out of this.
+4:23 - Okay, thank you. Go ahead. So, this is going to be fire because like I said,
+4:28 - this model ran all night. These two in the middle ran all night. Uh, I've got Opus 4.6 trading on Poly Market for me
+4:36 - as we speak. So, let's see if she gets any dubs.
+4:40 - I had this error actually. So, let me go ahead and fix that while she's going. I did fix it. Uh, I just need to restart
+4:47 - it. Okay, so she just had a little bit of an error. So, there we go. Restart it here. Um, and then here we go. Here's all of the data. And this is everything
+4:55 - that took me more than a day to complete. You know, it took me a few few hours to code it and then it took me uh
+5:02 - a legit day to train this. So, I hope this deserves a thumbs up or something.
+5:07 - But if not, that's cool, too. Much love to you 777. Okay, let's go ahead. Model results here. Tabnet 50.86 accuracy took
+5:15 - two hours to train. 56 epochs focused almost entirely on price position 60 42%
+5:20 - of importance. No usable confidence signal except a tiny 11 trade sample at 65 hitting 72%.
+5:30 - Tabnet is trash for this at least. TCN complete failure at 49.91%.
+5:35 - So that is worse than just flipping a coin. The loss never moved from 6932 across all 30 epochs. The network never
+5:44 - learned anything. It predicted up on every single trade. The normalization or architecture needs rework, but
+5:52 - fundamentally it found no signal in raw sequences. Raw candle xG boost 50.73. Okay, a little bit better than random.
+6:00 - Trained 172 iterations, the most of any model. Top features green count five,
+6:06 - green count 15. Basically momentum counting at 55.55 confidence and 57.34 on 143 trades. Best high confidence signal of all models.
+6:16 - Microructure light GBM. So 50.91 this is the best one but still it's barely over random right so it's you know at least you get the honest truth here trained
+6:25 - 334 iterations deepest learning top features up windows green ratio skew okay so full model comparison you can
+6:33 - see the test account nothing crazy here you know I want to see like 55 minimum P&L awful trades confidence okay where
+6:41 - the alpha is so raw candle xG boost has the best win rate 57% Okay, above break
+6:48 - even light m uh micro structure light GBM 56%.
+6:55 - So the verdict, no model has edge when trading every window all sit at 51%
+6:59 - while well below the 54% break even BTZ 5m minute direction is essentially a coin flip for machine learning trained
+7:06 - on historical data with the time series split but every single model shows edge at high confidence thresholds. The raw candle XG boost at 57.34%
+7:17 - on 143 trades is the most convincing because it has the reasonable sample size and decent edge. The problem is
+7:24 - frequency. 143 trades out of 60,000 is only 2%. Your simple MACD histogram is
+7:31 - better on the That's crazy. The ML models are being honest.
+7:36 - What it takes out of sample edge actually looks like the confidence filtering is the real takeaway. If you could combine multiple models and only
+7:45 - trade when several agree with high confidence, that's where the edge concentrates. So yeah, what do you think the next play is? Do you think it's
+7:51 - combining multiple models here? Um, it shows the raw candle XGB 57% win rate
+7:58 - might be solid right on a fiveminute market. Obviously, we want higher, but that could be decent. So, how do we explore those two prongs here? Okay,
+8:08 - thank you.
+8:11 - And then in the meantime, I want to go ahead and get you all the code. So,
+8:15 - uh man, actually, you just come back tomorrow. Come to the Zoom tomorrow because this is going to be tough. I'll give you some of the code here. I'll scroll through it. Uh for those that
+8:23 - don't want to join the um the Zoom, you know, I know it's five bucks and I know that might put you put
+8:31 - you back a couple years in life, but uh feature engineering. Here's all of the code for feature engineering.
+8:38 - just so I could scroll it through it really quickly. Now, Andrew Ning, the the goat of AI, he says that machine learning is every everything is feature engineering at the end of the day. So,
+8:49 - this is a file that you want to lock in on and I need to lock in on. I need to engineer better features and I should probably talk about that right now. So, let's just talk about it real quick. So,
+8:58 - Andrew Ning, the Stanford professor and the goat of AI said machine learning comes down to feature engineering. So
+9:05 - look at our features file and see how we can engineer better features. Okay, so these are just ideas I'm having but hopefully you have even better ideas.
+9:13 - Okay, let's get it. Dude, you could do anything in this world. I believe in you.
+9:23 - Okay, so here we'll go ahead and get that going. Let's go ahead and get you a little bit more code here. What was the best one? What was the best one? It was the XG boost. Let's get you the XG boost
+9:31 - since you already saw the feature engineering part. Oh, you need to see the data prep, too. So, here's the data prep. Okay, so this is just the data prep to get your data prepped. Okay,
+9:40 - perfect. After you run those two files, then you're Gucci to run the XG boost.
+9:44 - And I tested multiple multiple XG boosts as you can see here. And um I'm going to give you the better one. I'm going to give you the better one because I
+9:52 - believe code is a great equalizer. And if this gets you to learn how to code, dude, then I've done my job here. Yes, if you become a profitable algo trader,
+9:59 - that's that's even more fire. But at the end of the day, if you learn how to code, I think you could do anything for the rest of your life. Here's the rest of the train XGV.
+10:08 - So, XG Boost machine learning model.
+10:10 - Nobody's going to show you this stuff on the internet, dude. Then I'm going to go ahead and get all of this code here. Uh,
+10:15 - I'm going to get the XG Boost since that's the best one. Let's just go ahead and get that one in to the onto the website on the U road map. And then the road map, you can have that tomorrow,
+10:25 - but you can also just rewind, dude. I want to make sure this is available to everybody. As I started here on YouTube,
+10:30 - everything was free. I just got hacked a few times and bullied too much that I'm not going to have it all free anymore.
+10:35 - If you want to talk to me, then I need to make sure that you're actually stepping on the gas. No offense to you,
+10:40 - but in general, thousands of people, the loud ones, are usually cooked and I can't talk to cooked people all the time. So, if you really want to talk to
+10:49 - me or something like that, jump into the Zoom. Boom. Okay, now you have all the code. So, in this video, you've compressed a day's worth of work. You
+10:58 - have all the code. Let's get the data prep here into the website. So, let me go ahead and use Claude here to go boom,
+11:05 - boom, boom. Okay, that's one. And then let's go here. You need that. That's a data prep.
+11:12 - This is the feature engineering. Okay.
+11:16 - And then this is the model that did the best just so you can have it. Okay.
+11:24 - You can see the data prep, the feature engineering code, and then the XG boost model here. So, I need you to put this into one article just like you have here
+11:33 - on this other article. And then after you write that and make it available to everybody that uh goes to that link, you know, you'll put in the
+11:40 - moonundab.com/roadmap so it will be accessible to anybody that gets the roadmap. Uh just here is an example of how to do this. We'll just
+11:48 - make one article for the these three in the same post because remember you have to prep your data and then you have to do uh feature engineering and then you do the machine learning model. This is the XG boost machine learning model.
+11:59 - Anyways, go ahead and talk about it's for poly markets specifically the fiveminute markets that are very interesting. So that's the whole the
+12:06 - whole thing. So let's go ahead and give her the link.
+12:12 - Now I already showed you that I I gave you the road map, right? That's where I got the data earlier. Um, in that road map, there's also a bunch of code for my
+12:20 - YouTube videos. So, the last few videos I've just been adding more code like the HIPP through liquidation, trading bot,
+12:25 - HIPP funding bot, the five minute poly market bot, uh, MACD, etc., etc. So,
+12:30 - let's go ahead and copy this link address and this will be my example. But by the time you are actually, if you're watching this right now and it's not
+12:39 - 9:30 a.m. on um, what day is it? Friday.
+12:45 - Yeah. Yeah, if it's not 9:30 a.m., then this should be ready for you. Just go to moonundab.com. Links in the description.
+12:51 - Make sure to hit subscribe. I showed you all the code. If you want to just rewind, if you want to copy paste, then definitely go jump into the Zoom tomorrow. I'll see there.
