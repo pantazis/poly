@@ -83,18 +83,23 @@ class LiquidationCollector:
         logger.info(f"Data directory: {self._config.data_dir}")
         logger.info(f"Significance threshold: ${self._config.significance_threshold_usd:,.0f}")
         
-        # Set up signal handlers
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(self.shutdown()))
+        # Set up signal handlers (Unix only, skip on Windows)
+        import sys
+        if sys.platform != "win32":
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(self.shutdown()))
         
         # Start background tasks
         flush_task = asyncio.create_task(self._periodic_flush())
         health_task = asyncio.create_task(self._periodic_health_check())
         connect_task = asyncio.create_task(self._connector.connect())
         
-        # Wait for shutdown
-        await self._shutdown_event.wait()
+        # Wait for shutdown or KeyboardInterrupt
+        try:
+            await self._shutdown_event.wait()
+        except asyncio.CancelledError:
+            pass
         
         # Cancel background tasks
         flush_task.cancel()

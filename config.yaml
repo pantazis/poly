@@ -1,0 +1,103 @@
+# Liquidation Trading Bot Configuration
+# =====================================
+# This file configures the trading bot parameters.
+# Environment variables can be substituted using ${VAR_NAME} syntax.
+#
+# IMPORTANT: dry_run is set to true by default for safety.
+# Only set dry_run: false when you are ready to trade with real funds.
+
+# Signal Detection Settings
+# -------------------------
+# Controls when the bot generates entry signals based on liquidation data
+signal:
+  # Minimum total liquidation USD to trigger an entry signal
+  # Signals below this threshold are ignored
+  entry_threshold_min: 25000
+  
+  # Maximum total liquidation USD for a valid signal
+  # Signals above this threshold are ignored (too volatile)
+  entry_threshold_max: 100000
+  
+  # Aggregation window in minutes to monitor for liquidations
+  # Valid values: 1, 5, 10, or 15
+  liquidation_window_minutes: 5
+
+# Polymarket Settings
+# -------------------
+# Configuration for Polymarket 5-minute BTC binary options trading
+polymarket:
+  # USDC amount to bet on each Polymarket trade
+  bet_size: 10
+  
+  # Percentage below best ask price for limit orders
+  # Higher discount = better entry but lower fill probability
+  discount_percent: 10
+  
+  # Ethereum wallet private key for EIP-712 signing
+  # NEVER commit your actual private key - use environment variable
+  private_key: "${POLYMARKET_PRIVATE_KEY}"
+
+# Binance Futures Settings
+# ------------------------
+# Configuration for Binance Futures hedge positions
+binance:
+  # Enable/disable Binance hedge positions
+  # Set to false to trade Polymarket only without hedging
+  hedge_enabled: false
+  
+  # Leverage multiplier for hedge positions (1-20)
+  # Default 3x provides moderate hedge exposure
+  hedge_leverage: 3
+  
+  # USD value for Binance hedge position
+  hedge_size: 15
+  
+  # Binance API key for authentication
+  # Use environment variable for security
+  api_key: "${BINANCE_API_KEY}"
+  
+  # Binance API secret for HMAC SHA256 signing
+  # NEVER commit your actual secret - use environment variable
+  api_secret: "${BINANCE_API_SECRET}"
+
+# Risk Management Settings
+# ------------------------
+# Controls to limit trading losses and exposure
+risk:
+  # Maximum daily realized loss in USD before blocking new trades
+  # Resets at UTC midnight
+  max_daily_loss: 100
+  
+  # Maximum number of Trade_Pairs that can be open simultaneously
+  # Recommended to keep at 1 for simpler risk management
+  max_concurrent_positions: 1
+
+# Operational Settings
+# --------------------
+# General bot operation configuration
+operational:
+  # Dry run mode - simulates trades without calling exchange APIs
+  # Set to true for testing, false for live trading
+  # WARNING: Setting to false will execute real trades with real money!
+  dry_run: true
+  
+  # Directory for trade log CSV files
+  # Daily logs are written as trades_YYYY-MM-DD.csv
+  log_dir: "./logs"
+
+# Telegram Notifications Settings
+# -------------------------------
+# Configuration for Telegram bot notifications and commands
+# To get a bot token: Message @BotFather on Telegram and create a new bot
+# To get your chat ID: Message @userinfobot on Telegram
+telegram:
+  # Enable/disable Telegram notifications
+  enabled: true
+  
+  # Telegram Bot API token from @BotFather
+  # Use environment variable for security
+  token: "${TELEGRAM_TOKEN}"
+  
+  # Chat ID to send notifications to
+  # Use environment variable for security
+  chat_id: "${TELEGRAM_CHAT_ID}"

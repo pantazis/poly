@@ -41,6 +41,10 @@ data/
 .coverage
 htmlcov/
 
+# Environment
+.env
+.env.*
+
 # OS
 .DS_Store
 Thumbs.db

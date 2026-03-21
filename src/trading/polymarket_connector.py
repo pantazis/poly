@@ -1,0 +1,797 @@
+"""Polymarket CLOB API connector for order placement.
+
+This module provides the PolymarketConnector class for interfacing with
+Polymarket's Central Limit Order Book API to place and manage orders
+on 5-minute BTC binary options.
+
+Authentication uses:
+- API Key authentication with api_key, api_secret, passphrase headers
+- EIP-712 signatures for order signing using the private_key
+
+Market Discovery:
+- BTC 5-minute markets use URL pattern: btc-updown-5m-{unix_timestamp}
+- Timestamp is rounded down to nearest 5-minute interval
+- Markets have UP and DOWN token IDs for trading
+"""
+
+import asyncio
+import hashlib
+import hmac
+import json
+import logging
+import os
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+from src.trading.models import PolymarketOrder
+
+logger = logging.getLogger(__name__)
+
+
+class PolymarketConnector:
+    """Interfaces with Polymarket CLOB API for order placement.
+    
+    Handles authentication, order placement, and order management for
+    Polymarket's 5-minute BTC binary options markets.
+    
+    Market Discovery:
+    - Generates market URLs based on current UTC time
+    - Rounds to nearest 5-minute interval for market timing
+    - Fetches token IDs for UP/DOWN outcomes from Gamma API
+    
+    In dry_run mode, simulates orders without making actual API calls.
+    """
+    
+    # API endpoints
+    CLOB_API_URL = "https://clob.polymarket.com"
+    GAMMA_API_URL = "https://gamma-api.polymarket.com"
+    
+    # Market interval in seconds (5 minutes)
+    MARKET_INTERVAL_SECONDS = 300
+    
+    def __init__(
+        self,
+        private_key: str,
+        api_key: str = "",
+        api_secret: str = "",
+        passphrase: str = "",
+        dry_run: bool = True,
+    ):
+        """Initialize the Polymarket connector.
+        
+        Args:
+            private_key: Ethereum wallet private key for EIP-712 signing
+            api_key: Polymarket API key for authentication
+            api_secret: Polymarket API secret for HMAC signing
+            passphrase: Polymarket API passphrase
+            dry_run: If True, simulate orders without API calls
+        """
+        self._private_key = private_key
+        self._api_key = api_key or os.environ.get("POLYMARKET_API_KEY", "")
+        self._api_secret = api_secret or os.environ.get("POLYMARKET_SECRET", "")
+        self._passphrase = passphrase or os.environ.get("POLYMARKET_PASSPHRASE", "")
+        self._dry_run = dry_run
+        
+        # Current market state
+        self._current_market_id: str | None = None
+        self._current_up_token_id: str | None = None
+        self._current_down_token_id: str | None = None
+        self._market_expiry_timestamp: int = 0
+        
+        # Simulated state for dry run mode
+        self._simulated_balance: float = 10000.0
+        self._simulated_orders: dict[str, PolymarketOrder] = {}
+        self._simulated_prices: dict[str, float] = {"UP": 0.50, "DOWN": 0.50}
+        
+        # HTTP session (lazy initialized)
+        self._session: Any = None
+
+    async def _get_session(self) -> Any:
+        """Get or create HTTP session."""
+        if self._session is None:
+            try:
+                import aiohttp
+                self._session = aiohttp.ClientSession()
+            except ImportError:
+                self._session = None
+        return self._session
+    
+    async def _close_session(self) -> None:
+        """Close HTTP session if open."""
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+    
+    def _generate_api_headers(self, timestamp: int) -> dict[str, str]:
+        """Generate API authentication headers.
+        
+        Args:
+            timestamp: Unix timestamp in milliseconds
+            
+        Returns:
+            Dictionary of authentication headers
+        """
+        message = f"{timestamp}"
+        signature = hmac.new(
+            self._api_secret.encode("utf-8"),
+            message.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
+        
+        return {
+            "POLY_API_KEY": self._api_key,
+            "POLY_SIGNATURE": signature,
+            "POLY_TIMESTAMP": str(timestamp),
+            "POLY_PASSPHRASE": self._passphrase,
+            "Content-Type": "application/json",
+        }
+
+    def _generate_eip712_signature(self, order_data: dict[str, Any]) -> str:
+        """Generate EIP-712 signature for order signing.
+        
+        Args:
+            order_data: Order data to sign
+            
+        Returns:
+            Hex-encoded signature string
+        """
+        domain = {
+            "name": "Polymarket CLOB",
+            "version": "1",
+            "chainId": 137,  # Polygon mainnet
+        }
+        
+        message = json.dumps({
+            "domain": domain,
+            "order": order_data,
+        }, sort_keys=True)
+        
+        message_hash = hashlib.sha256(message.encode()).hexdigest()
+        signature = hmac.new(
+            bytes.fromhex(self._private_key.replace("0x", "")),
+            bytes.fromhex(message_hash),
+            hashlib.sha256
+        ).hexdigest()
+        
+        return f"0x{signature}"
+    
+    def _get_current_market_timestamp(self) -> int:
+        """Get the Unix timestamp for the current 5-minute market interval.
+        
+        Rounds down current UTC time to nearest 5-minute boundary.
+        
+        Returns:
+            Unix timestamp (seconds) for current market interval
+        """
+        now = int(time.time())
+        # Round down to nearest 5-minute interval
+        return (now // self.MARKET_INTERVAL_SECONDS) * self.MARKET_INTERVAL_SECONDS
+    
+    def _generate_market_slug(self, timestamp: int) -> str:
+        """Generate the market slug for a BTC 5-minute market.
+        
+        Args:
+            timestamp: Unix timestamp for the market interval
+            
+        Returns:
+            Market slug like "btc-updown-5m-1771168800"
+        """
+        return f"btc-updown-5m-{timestamp}"
+    
+    async def _fetch_market_tokens(self, market_slug: str) -> tuple[str | None, str | None, str | None]:
+        """Fetch market ID and token IDs from Gamma API.
+        
+        Args:
+            market_slug: The market slug (e.g., "btc-updown-5m-1771168800")
+            
+        Returns:
+            Tuple of (market_id, up_token_id, down_token_id) or (None, None, None) if not found
+        """
+        if self._dry_run:
+            # Return simulated token IDs
+            return (
+                f"sim-market-{market_slug}",
+                f"sim-up-token-{market_slug}",
+                f"sim-down-token-{market_slug}",
+            )
+        
+        session = await self._get_session()
+        if session is None:
+            logger.warning("HTTP session not available")
+            return None, None, None
+        
+        try:
+            # Query Gamma API for market data
+            url = f"{self.GAMMA_API_URL}/events?slug={market_slug}"
+            
+            async with session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    if data and len(data) > 0:
+                        event = data[0]
+                        markets = event.get("markets", [])
+                        
+                        if markets and len(markets) > 0:
+                            market = markets[0]
+                            market_id = str(market.get("id", ""))
+                            
+                            # Get token IDs from clobTokenIds
+                            clob_token_ids = market.get("clobTokenIds", [])
+                            
+                            if len(clob_token_ids) >= 2:
+                                # First token is typically UP/Yes, second is DOWN/No
+                                up_token_id = clob_token_ids[0]
+                                down_token_id = clob_token_ids[1]
+                                
+                                logger.info(f"Found market {market_id} for {market_slug}")
+                                logger.debug(f"UP token: {up_token_id[:20]}...")
+                                logger.debug(f"DOWN token: {down_token_id[:20]}...")
+                                
+                                return market_id, up_token_id, down_token_id
+                    
+                    logger.warning(f"Market not found for slug: {market_slug}")
+                else:
+                    logger.warning(f"Gamma API returned status {response.status}")
+                    
+        except Exception as e:
+            logger.error(f"Error fetching market tokens: {e}")
+        
+        return None, None, None
+
+    async def _ensure_current_market(self) -> bool:
+        """Ensure we have valid token IDs for the current market interval.
+        
+        Fetches new market data if the current market has expired or
+        if we don't have market data yet.
+        
+        Returns:
+            True if we have valid market data, False otherwise
+        """
+        current_timestamp = self._get_current_market_timestamp()
+        
+        # Check if we need to refresh market data
+        if (self._current_market_id is None or 
+            current_timestamp != self._market_expiry_timestamp - self.MARKET_INTERVAL_SECONDS):
+            
+            market_slug = self._generate_market_slug(current_timestamp)
+            logger.info(f"Fetching market data for: {market_slug}")
+            
+            market_id, up_token, down_token = await self._fetch_market_tokens(market_slug)
+            
+            if market_id and up_token and down_token:
+                self._current_market_id = market_id
+                self._current_up_token_id = up_token
+                self._current_down_token_id = down_token
+                self._market_expiry_timestamp = current_timestamp + self.MARKET_INTERVAL_SECONDS
+                
+                logger.info(f"Market ready: {market_id}, expires at {self._market_expiry_timestamp}")
+                return True
+            else:
+                logger.error(f"Failed to get market data for {market_slug}")
+                return False
+        
+        return True
+    
+    def _get_token_id_for_outcome(self, outcome: str) -> str | None:
+        """Get the token ID for a given outcome.
+        
+        Args:
+            outcome: "UP" or "DOWN"
+            
+        Returns:
+            Token ID string or None if not available
+        """
+        if outcome == "UP":
+            return self._current_up_token_id
+        elif outcome == "DOWN":
+            return self._current_down_token_id
+        return None
+
+    async def connect(self) -> bool:
+        """Verify API connectivity and fetch initial market data.
+        
+        Returns:
+            True if connection is successful, False otherwise
+        """
+        if self._dry_run:
+            logger.info("[DRY RUN] Polymarket connection simulated successfully")
+            # Pre-populate simulated market data
+            await self._ensure_current_market()
+            return True
+        
+        try:
+            session = await self._get_session()
+            if session is None:
+                logger.warning("aiohttp not available, skipping connectivity check")
+                return True
+            
+            # Test CLOB API connectivity
+            async with session.get(
+                f"{self.CLOB_API_URL}/",
+                timeout=10
+            ) as response:
+                if response.status == 200:
+                    logger.info("Polymarket CLOB API connection verified")
+                else:
+                    logger.warning(f"CLOB API returned status {response.status}")
+            
+            # Fetch initial market data
+            if await self._ensure_current_market():
+                logger.info("Polymarket API connection verified")
+                return True
+            else:
+                logger.warning("Connected but could not fetch market data")
+                return True  # Still return True, market might not be available yet
+                    
+        except Exception as e:
+            logger.error(f"Failed to connect to Polymarket API: {e}")
+            return False
+    
+    async def get_balance(self) -> float:
+        """Get available USDC balance.
+        
+        Returns:
+            Available USDC balance
+        """
+        if self._dry_run:
+            logger.info(f"[DRY RUN] Polymarket balance: ${self._simulated_balance:.2f}")
+            return self._simulated_balance
+        
+        try:
+            session = await self._get_session()
+            if session is None:
+                return self._simulated_balance
+            
+            timestamp = int(time.time() * 1000)
+            headers = self._generate_api_headers(timestamp)
+            
+            async with session.get(
+                f"{self.CLOB_API_URL}/balance",
+                headers=headers,
+                timeout=10
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    balance = float(data.get("balance", 0))
+                    logger.info(f"Polymarket balance: ${balance:.2f}")
+                    return balance
+                else:
+                    logger.error(f"Failed to get balance: {response.status}")
+                    return 0.0
+                    
+        except Exception as e:
+            logger.error(f"Error fetching Polymarket balance: {e}")
+            return 0.0
+    
+    async def get_current_price(self, outcome: str) -> float:
+        """Get current best ask price for outcome.
+        
+        Args:
+            outcome: "UP" or "DOWN"
+            
+        Returns:
+            Best ask price (0-1 range)
+            
+        Raises:
+            ValueError: If outcome is not "UP" or "DOWN"
+        """
+        if outcome not in ("UP", "DOWN"):
+            raise ValueError(f"Invalid outcome: {outcome}. Must be 'UP' or 'DOWN'")
+        
+        if self._dry_run:
+            price = self._simulated_prices.get(outcome, 0.50)
+            logger.info(f"[DRY RUN] Polymarket {outcome} price: {price:.4f}")
+            return price
+        
+        # Ensure we have current market data
+        if not await self._ensure_current_market():
+            logger.warning("Could not get market data, returning default price")
+            return 0.50
+        
+        token_id = self._get_token_id_for_outcome(outcome)
+        if not token_id:
+            logger.warning(f"No token ID for {outcome}")
+            return 0.50
+        
+        try:
+            session = await self._get_session()
+            if session is None:
+                return 0.50
+            
+            # Query CLOB API for price
+            async with session.get(
+                f"{self.CLOB_API_URL}/price",
+                params={"token_id": token_id, "side": "buy"},
+                timeout=10
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    price = float(data.get("price", 0.50))
+                    logger.info(f"Polymarket {outcome} price: {price:.4f}")
+                    return price
+                else:
+                    logger.warning(f"Price API returned status {response.status}")
+                    return 0.50
+                    
+        except Exception as e:
+            logger.error(f"Error fetching Polymarket price: {e}")
+            return 0.50
+
+    async def place_order(
+        self,
+        outcome: str,
+        size: float,
+        discount_percent: float = 10.0,
+        timeout_seconds: float = 30.0,
+    ) -> PolymarketOrder:
+        """Place limit order at discount below current price.
+        
+        Finds the current BTC 5-minute market, gets the appropriate token ID,
+        and places a limit order at a discount to the current best ask.
+        
+        Args:
+            outcome: "UP" or "DOWN"
+            size: USDC amount to bet
+            discount_percent: Percentage below best ask for limit price
+            timeout_seconds: Cancel order if not filled within this time
+            
+        Returns:
+            PolymarketOrder with final status
+            
+        Raises:
+            ValueError: If outcome is not "UP" or "DOWN"
+        """
+        if outcome not in ("UP", "DOWN"):
+            raise ValueError(f"Invalid outcome: {outcome}. Must be 'UP' or 'DOWN'")
+        
+        # Ensure we have current market data
+        if not await self._ensure_current_market():
+            logger.error("Cannot place order: no market data available")
+            return PolymarketOrder(
+                order_id=str(uuid.uuid4()),
+                market_id="unknown",
+                outcome=outcome,
+                side="BUY",
+                size=size,
+                price=0,
+                status="cancelled",
+                fill_price=None,
+                fill_time=None,
+            )
+        
+        # Get current price and calculate limit price with discount
+        current_price = await self.get_current_price(outcome)
+        limit_price = current_price * (1 - discount_percent / 100)
+        
+        # Ensure price is within valid range (0-1)
+        limit_price = max(0.01, min(0.99, limit_price))
+        
+        order_id = str(uuid.uuid4())
+        token_id = self._get_token_id_for_outcome(outcome)
+        
+        order = PolymarketOrder(
+            order_id=order_id,
+            market_id=self._current_market_id or "unknown",
+            outcome=outcome,
+            side="BUY",
+            size=size,
+            price=limit_price,
+            status="pending",
+            fill_price=None,
+            fill_time=None,
+        )
+        
+        logger.info(
+            f"Placing {outcome} order on BTC 5m market: "
+            f"size=${size:.2f}, price={limit_price:.4f} "
+            f"(current: {current_price:.4f}, discount: {discount_percent}%)"
+        )
+        
+        if self._dry_run:
+            return await self._simulate_order(order, timeout_seconds)
+        
+        try:
+            order = await self._place_order_api(order, token_id)
+            
+            if order.status == "pending":
+                order = await self._wait_for_fill(order, timeout_seconds)
+            
+            return order
+            
+        except Exception as e:
+            logger.error(f"Error placing order: {e}")
+            order.status = "cancelled"
+            return order
+    
+    async def _simulate_order(
+        self,
+        order: PolymarketOrder,
+        timeout_seconds: float,
+    ) -> PolymarketOrder:
+        """Simulate order execution in dry run mode.
+        
+        Args:
+            order: The order to simulate
+            timeout_seconds: Timeout for fill simulation
+            
+        Returns:
+            PolymarketOrder with simulated fill
+        """
+        logger.info(
+            f"[DRY RUN] Placing {order.outcome} order on BTC 5m market: "
+            f"size=${order.size:.2f}, price={order.price:.4f}"
+        )
+        
+        self._simulated_orders[order.order_id] = order
+        
+        # Simulate a brief delay before fill
+        await asyncio.sleep(0.5)
+        
+        # In dry run, simulate immediate fill at limit price
+        order.status = "filled"
+        order.fill_price = order.price
+        order.fill_time = datetime.now(timezone.utc)
+        
+        # Deduct from simulated balance
+        self._simulated_balance -= order.size
+        
+        logger.info(
+            f"[DRY RUN] Order filled: {order.outcome} at {order.fill_price:.4f}"
+        )
+        
+        return order
+    
+    async def _place_order_api(self, order: PolymarketOrder, token_id: str | None) -> PolymarketOrder:
+        """Place order via Polymarket CLOB API.
+        
+        Args:
+            order: The order to place
+            token_id: The token ID to trade
+            
+        Returns:
+            PolymarketOrder with API response
+        """
+        if not token_id:
+            logger.error("No token ID provided for order")
+            order.status = "cancelled"
+            return order
+        
+        session = await self._get_session()
+        if session is None:
+            logger.error("HTTP session not available")
+            order.status = "cancelled"
+            return order
+        
+        timestamp = int(time.time() * 1000)
+        headers = self._generate_api_headers(timestamp)
+        
+        # Prepare order data for signing
+        order_data = {
+            "token_id": token_id,
+            "side": "BUY",
+            "size": str(order.size),
+            "price": str(order.price),
+            "timestamp": timestamp,
+        }
+        
+        # Generate EIP-712 signature
+        signature = self._generate_eip712_signature(order_data)
+        order_data["signature"] = signature
+        
+        try:
+            async with session.post(
+                f"{self.CLOB_API_URL}/order",
+                headers=headers,
+                json=order_data,
+                timeout=10
+            ) as response:
+                if response.status in (200, 201):
+                    data = await response.json()
+                    order.order_id = data.get("orderID", order.order_id)
+                    order.status = data.get("status", "pending")
+                    logger.info(f"Order placed: {order.order_id}")
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Failed to place order: {response.status} - {error_text}")
+                    order.status = "cancelled"
+                    
+        except Exception as e:
+            logger.error(f"Error placing order via API: {e}")
+            order.status = "cancelled"
+        
+        return order
+
+    async def _wait_for_fill(
+        self,
+        order: PolymarketOrder,
+        timeout_seconds: float,
+    ) -> PolymarketOrder:
+        """Wait for order to fill or cancel after timeout.
+        
+        Args:
+            order: The pending order
+            timeout_seconds: Maximum time to wait
+            
+        Returns:
+            PolymarketOrder with final status
+        """
+        start_time = time.time()
+        poll_interval = 1.0
+        
+        while time.time() - start_time < timeout_seconds:
+            updated_order = await self._get_order_status(order.order_id)
+            
+            if updated_order.status == "filled":
+                order.status = "filled"
+                order.fill_price = updated_order.fill_price
+                order.fill_time = updated_order.fill_time
+                logger.info(f"Order filled: {order.order_id} at {order.fill_price}")
+                return order
+            elif updated_order.status in ("cancelled", "expired"):
+                order.status = updated_order.status
+                logger.info(f"Order {order.status}: {order.order_id}")
+                return order
+            
+            await asyncio.sleep(poll_interval)
+        
+        # Timeout reached - cancel the order
+        logger.warning(f"Order timeout after {timeout_seconds}s, cancelling: {order.order_id}")
+        await self.cancel_order(order.order_id)
+        order.status = "cancelled"
+        
+        return order
+    
+    async def _get_order_status(self, order_id: str) -> PolymarketOrder:
+        """Get current status of an order.
+        
+        Args:
+            order_id: The order ID to check
+            
+        Returns:
+            PolymarketOrder with current status
+        """
+        if order_id in self._simulated_orders:
+            return self._simulated_orders[order_id]
+        
+        session = await self._get_session()
+        if session is None:
+            return PolymarketOrder(
+                order_id=order_id,
+                market_id="unknown",
+                outcome="",
+                side="BUY",
+                size=0,
+                price=0,
+                status="pending",
+                fill_price=None,
+                fill_time=None,
+            )
+        
+        timestamp = int(time.time() * 1000)
+        headers = self._generate_api_headers(timestamp)
+        
+        try:
+            async with session.get(
+                f"{self.CLOB_API_URL}/order/{order_id}",
+                headers=headers,
+                timeout=10
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    fill_time = None
+                    if data.get("fill_time"):
+                        fill_time = datetime.fromisoformat(
+                            data["fill_time"].replace("Z", "+00:00")
+                        )
+                    
+                    return PolymarketOrder(
+                        order_id=data.get("orderID", order_id),
+                        market_id=self._current_market_id or "unknown",
+                        outcome=data.get("outcome", ""),
+                        side=data.get("side", "BUY"),
+                        size=float(data.get("size", 0)),
+                        price=float(data.get("price", 0)),
+                        status=data.get("status", "pending"),
+                        fill_price=float(data["fill_price"]) if data.get("fill_price") else None,
+                        fill_time=fill_time,
+                    )
+                else:
+                    logger.error(f"Failed to get order status: {response.status}")
+                    
+        except Exception as e:
+            logger.error(f"Error getting order status: {e}")
+        
+        return PolymarketOrder(
+            order_id=order_id,
+            market_id="unknown",
+            outcome="",
+            side="BUY",
+            size=0,
+            price=0,
+            status="pending",
+            fill_price=None,
+            fill_time=None,
+        )
+
+    async def cancel_order(self, order_id: str) -> bool:
+        """Cancel a pending order.
+        
+        Args:
+            order_id: The order ID to cancel
+            
+        Returns:
+            True if cancellation was successful, False otherwise
+        """
+        if self._dry_run:
+            if order_id in self._simulated_orders:
+                self._simulated_orders[order_id].status = "cancelled"
+                logger.info(f"[DRY RUN] Order cancelled: {order_id}")
+                return True
+            logger.warning(f"[DRY RUN] Order not found: {order_id}")
+            return False
+        
+        session = await self._get_session()
+        if session is None:
+            logger.error("HTTP session not available")
+            return False
+        
+        timestamp = int(time.time() * 1000)
+        headers = self._generate_api_headers(timestamp)
+        
+        try:
+            async with session.delete(
+                f"{self.CLOB_API_URL}/order/{order_id}",
+                headers=headers,
+                timeout=10
+            ) as response:
+                if response.status in (200, 204):
+                    logger.info(f"Order cancelled: {order_id}")
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Failed to cancel order: {response.status} - {error_text}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Error cancelling order: {e}")
+            return False
+    
+    def get_current_market_info(self) -> dict[str, Any]:
+        """Get information about the current market.
+        
+        Returns:
+            Dictionary with market_id, up_token_id, down_token_id, expiry_timestamp
+        """
+        return {
+            "market_id": self._current_market_id,
+            "up_token_id": self._current_up_token_id,
+            "down_token_id": self._current_down_token_id,
+            "expiry_timestamp": self._market_expiry_timestamp,
+            "market_slug": self._generate_market_slug(self._get_current_market_timestamp()),
+        }
+    
+    def set_simulated_price(self, outcome: str, price: float) -> None:
+        """Set simulated price for dry run mode.
+        
+        Args:
+            outcome: "UP" or "DOWN"
+            price: Price to set (0-1 range)
+        """
+        if outcome in ("UP", "DOWN"):
+            self._simulated_prices[outcome] = max(0.01, min(0.99, price))
+    
+    def set_simulated_balance(self, balance: float) -> None:
+        """Set simulated balance for dry run mode.
+        
+        Args:
+            balance: Balance in USDC
+        """
+        self._simulated_balance = max(0, balance)
+    
+    async def close(self) -> None:
+        """Close the connector and release resources."""
+        await self._close_session()
+        logger.info("Polymarket connector closed")

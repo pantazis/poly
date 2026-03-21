@@ -5,6 +5,9 @@ description = "Real-time Binance Futures liquidation data collector"
 requires-python = ">=3.11"
 dependencies = [
     "websockets>=12.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "aiohttp>=3.9",
 ]
 
 [project.optional-dependencies]
