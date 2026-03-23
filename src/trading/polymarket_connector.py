@@ -58,6 +58,7 @@ class PolymarketConnector:
         api_secret: str = "",
         passphrase: str = "",
         dry_run: bool = True,
+        use_live_market_data_in_dry_run: bool = False,
     ):
         """Initialize the Polymarket connector.
         
@@ -66,13 +67,16 @@ class PolymarketConnector:
             api_key: Polymarket API key for authentication
             api_secret: Polymarket API secret for HMAC signing
             passphrase: Polymarket API passphrase
-            dry_run: If True, simulate orders without API calls
+            dry_run: If True, simulate orders without submitting exchange orders
+            use_live_market_data_in_dry_run: If True, use read-only Polymarket
+                APIs for market discovery and pricing while still simulating orders
         """
         self._private_key = private_key
         self._api_key = api_key or os.environ.get("POLYMARKET_API_KEY", "")
         self._api_secret = api_secret or os.environ.get("POLYMARKET_SECRET", "")
         self._passphrase = passphrase or os.environ.get("POLYMARKET_PASSPHRASE", "")
         self._dry_run = dry_run
+        self._use_live_market_data_in_dry_run = use_live_market_data_in_dry_run
         
         # Current market state
         self._current_market_id: str | None = None
@@ -87,6 +91,10 @@ class PolymarketConnector:
         
         # HTTP session (lazy initialized)
         self._session: Any = None
+
+    def _should_use_live_market_data(self) -> bool:
+        """Return True when market discovery and pricing should use live APIs."""
+        return not self._dry_run or self._use_live_market_data_in_dry_run
 
     async def _get_session(self) -> Any:
         """Get or create HTTP session."""
@@ -189,7 +197,7 @@ class PolymarketConnector:
         Returns:
             Tuple of (market_id, up_token_id, down_token_id) or (None, None, None) if not found
         """
-        if self._dry_run:
+        if self._dry_run and not self._should_use_live_market_data():
             # Return simulated token IDs
             return (
                 f"sim-market-{market_slug}",
@@ -296,7 +304,7 @@ class PolymarketConnector:
         Returns:
             True if connection is successful, False otherwise
         """
-        if self._dry_run:
+        if self._dry_run and not self._should_use_live_market_data():
             logger.info("[DRY RUN] Polymarket connection simulated successfully")
             # Pre-populate simulated market data
             await self._ensure_current_market()
@@ -381,24 +389,39 @@ class PolymarketConnector:
         if outcome not in ("UP", "DOWN"):
             raise ValueError(f"Invalid outcome: {outcome}. Must be 'UP' or 'DOWN'")
         
-        if self._dry_run:
+        if self._dry_run and not self._should_use_live_market_data():
             price = self._simulated_prices.get(outcome, 0.50)
             logger.info(f"[DRY RUN] Polymarket {outcome} price: {price:.4f}")
             return price
+
+        fallback_price = self._simulated_prices.get(outcome, 0.50)
+
+        def log_dry_run_fallback(reason: str) -> float:
+            logger.warning(
+                f"[DRY RUN] Live Polymarket pricing unavailable for {outcome}: {reason}. "
+                f"Falling back to simulated price {fallback_price:.4f}"
+            )
+            return fallback_price
         
         # Ensure we have current market data
         if not await self._ensure_current_market():
+            if self._dry_run:
+                return log_dry_run_fallback("market data unavailable")
             logger.warning("Could not get market data, returning default price")
             return 0.50
         
         token_id = self._get_token_id_for_outcome(outcome)
         if not token_id:
+            if self._dry_run:
+                return log_dry_run_fallback("token id unavailable")
             logger.warning(f"No token ID for {outcome}")
             return 0.50
         
         try:
             session = await self._get_session()
             if session is None:
+                if self._dry_run:
+                    return log_dry_run_fallback("HTTP session unavailable")
                 return 0.50
             
             # Query CLOB API for price
@@ -413,10 +436,16 @@ class PolymarketConnector:
                     logger.info(f"Polymarket {outcome} price: {price:.4f}")
                     return price
                 else:
+                    if self._dry_run:
+                        return log_dry_run_fallback(
+                            f"price API returned status {response.status}"
+                        )
                     logger.warning(f"Price API returned status {response.status}")
                     return 0.50
                     
         except Exception as e:
+            if self._dry_run:
+                return log_dry_run_fallback(str(e))
             logger.error(f"Error fetching Polymarket price: {e}")
             return 0.50
 
@@ -534,6 +563,9 @@ class PolymarketConnector:
         order.status = "filled"
         order.fill_price = order.price
         order.fill_time = datetime.now(timezone.utc)
+        order.shares_bought = order.size / order.fill_price
+        order.max_profit = order.shares_bought - order.size
+        order.max_loss = order.size
         
         # Deduct from simulated balance
         self._simulated_balance -= order.size

@@ -154,12 +154,14 @@ class PolymarketConnector:
         private_key: str,
         api_url: str = "https://clob.polymarket.com",
         dry_run: bool = True,
+        use_live_market_data_in_dry_run: bool = True,
     ):
         """
         Args:
             private_key: Ethereum wallet private key for EIP-712 signing
             api_url: Polymarket CLOB API endpoint
-            dry_run: If True, simulate orders without API calls
+            dry_run: If True, simulate orders without submitting exchange orders
+            use_live_market_data_in_dry_run: If True, use read-only Polymarket APIs for market discovery and pricing while still simulating fills
         """
         pass
     
@@ -509,6 +511,7 @@ class TradingConfig:
     
     # Operational
     dry_run: bool = True
+    polymarket_live_data_in_dry_run: bool = True
     log_dir: Path = field(default_factory=lambda: Path("./logs"))
 
 class ConfigManager:
@@ -669,6 +672,7 @@ risk:
 
 operational:
   dry_run: true
+    polymarket_live_data_in_dry_run: true
   log_dir: "./logs"
 ```
 
@@ -794,7 +798,7 @@ operational:
 
 ### Property 20: Dry Run Mode Behavior
 
-*For any* trade execution while dry_run is enabled, no actual API calls shall be made to exchanges, log entries shall have is_dry_run=true, and simulated fill prices shall be based on current market prices.
+*For any* trade execution while dry_run is enabled, no order submission API calls shall be made to exchanges, log entries shall have is_dry_run=true, and simulated Polymarket fill prices shall use read-only Polymarket market data when configured.
 
 **Validates: Requirements 10.2, 10.3, 10.4, 10.5**
 

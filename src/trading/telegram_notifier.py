@@ -326,6 +326,10 @@ class TelegramNotifier:
         direction: str,
         entry_price: float,
         bet_size: float,
+        reference_entry_price: float | None = None,
+        shares_bought: float | None = None,
+        max_profit: float | None = None,
+        max_loss: float | None = None,
     ) -> None:
         """Send trade entry notification.
         
@@ -341,6 +345,10 @@ class TelegramNotifier:
             direction=direction,
             price=entry_price,
             size=bet_size,
+            reference_entry_price=reference_entry_price,
+            shares_bought=shares_bought,
+            max_profit=max_profit,
+            max_loss=max_loss,
         )
         await self._send_message(message)
     
@@ -375,6 +383,8 @@ class TelegramNotifier:
         binance_pnl: float | None,
         total_pnl: float,
         daily_pnl: float,
+        reference_entry_price: float | None = None,
+        reference_exit_price: float | None = None,
     ) -> None:
         """Send trade closed notification.
         
@@ -392,6 +402,8 @@ class TelegramNotifier:
             binance_pnl=binance_pnl,
             total_pnl=total_pnl,
             daily_pnl=daily_pnl,
+            reference_entry_price=reference_entry_price,
+            reference_exit_price=reference_exit_price,
         )
         await self._send_message(message)
     

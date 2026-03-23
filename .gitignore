@@ -35,6 +35,14 @@ env/
 # Data
 data/
 *.csv
+logs/
+
+# Generated model artifacts
+candle_language/models/
+
+# Runtime logs
+candle_language/*.jsonl
+candle_language/*.log
 
 # Testing
 .pytest_cache/

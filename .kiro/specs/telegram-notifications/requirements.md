@@ -70,6 +70,7 @@ This document specifies the requirements for a Telegram Notifications feature th
    - Direction (UP/DOWN)
    - Entry price
    - Bet size
+   - Reference BTC entry price when available
 2. WHEN a Binance hedge is opened, THE Telegram_Notifier SHALL send a hedge notification containing:
    - Mode_Indicator
    - Trade ID
@@ -83,6 +84,7 @@ This document specifies the requirements for a Telegram Notifications feature th
    - Binance PnL
    - Total PnL
    - Daily PnL running total
+   - Reference BTC entry and exit prices when available
 
 ### Requirement 5: Error Notifications
 

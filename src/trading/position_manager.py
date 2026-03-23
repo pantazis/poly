@@ -66,6 +66,7 @@ class PositionManager:
         self,
         polymarket_order: PolymarketOrder,
         binance_position: BinancePosition | None,
+        reference_entry_price: float | None = None,
     ) -> TradePair:
         """Create and track a new TradePair.
         
@@ -94,6 +95,8 @@ class PositionManager:
             polymarket_pnl=None,
             binance_pnl=None,
             total_pnl=None,
+            reference_entry_price=reference_entry_price,
+            reference_exit_price=None,
         )
         
         self._open_position = trade_pair
@@ -106,6 +109,39 @@ class PositionManager:
         )
         
         return trade_pair
+
+    async def _calculate_dry_run_polymarket_pnl(self, trade_pair: TradePair) -> float | None:
+        """Calculate dry-run Polymarket settlement from BTC price direction."""
+        if not getattr(self._binance_trader, "dry_run", False):
+            return trade_pair.polymarket_pnl
+
+        if trade_pair.reference_entry_price is None:
+            return trade_pair.polymarket_pnl
+
+        shares_bought = trade_pair.polymarket_order.shares_bought
+        if shares_bought is None:
+            return trade_pair.polymarket_pnl
+
+        try:
+            exit_price = await self._binance_trader.get_current_price("BTCUSDT")
+        except Exception as exc:
+            logger.warning(
+                f"Failed to get dry-run settlement price for trade {trade_pair.trade_id}: {exc}"
+            )
+            return trade_pair.polymarket_pnl
+
+        trade_pair.reference_exit_price = exit_price
+
+        if trade_pair.direction == "UP":
+            won = exit_price > trade_pair.reference_entry_price
+        elif trade_pair.direction == "DOWN":
+            won = exit_price < trade_pair.reference_entry_price
+        else:
+            return trade_pair.polymarket_pnl
+
+        stake_usd = trade_pair.polymarket_order.size
+        payout = shares_bought if won else 0.0
+        return round(payout - stake_usd, 2)
     
     async def close_trade_pair(self, trade_id: str) -> TradePair:
         """Close a TradePair and calculate PnL.
@@ -137,6 +173,9 @@ class PositionManager:
         
         # Update status to closing
         trade_pair.status = "closing"
+
+        if trade_pair.polymarket_pnl is None:
+            trade_pair.polymarket_pnl = await self._calculate_dry_run_polymarket_pnl(trade_pair)
         
         binance_pnl: float | None = None
         

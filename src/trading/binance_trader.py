@@ -38,6 +38,7 @@ class BinanceTrader:
         api_secret: str,
         api_url: str = "https://fapi.binance.com",
         dry_run: bool = True,
+        use_live_market_data_in_dry_run: bool = False,
     ):
         """Initialize BinanceTrader.
         
@@ -46,17 +47,24 @@ class BinanceTrader:
             api_secret: Binance API secret for HMAC signing
             api_url: Binance Futures API endpoint
             dry_run: If True, simulate orders without API calls
+            use_live_market_data_in_dry_run: If True, allow read-only market
+                price requests during dry run while still simulating orders
         """
         self.api_key = api_key
         self.api_secret = api_secret
         self.api_url = api_url.rstrip("/")
         self.dry_run = dry_run
+        self._use_live_market_data_in_dry_run = use_live_market_data_in_dry_run
         
         # Track simulated positions for dry run mode
         self._simulated_positions: dict[str, BinancePosition] = {}
         self._simulated_price: float = 50000.0  # Default simulated price
         
         self._session: aiohttp.ClientSession | None = None
+
+    def _should_use_live_market_data(self) -> bool:
+        """Return True when public market data should use live APIs."""
+        return not self.dry_run or self._use_live_market_data_in_dry_run
     
     def _generate_signature(self, query_string: str) -> str:
         """Generate HMAC SHA256 signature for API authentication.
@@ -214,7 +222,7 @@ class BinanceTrader:
         Returns:
             Current mark price
         """
-        if self.dry_run:
+        if self.dry_run and not self._should_use_live_market_data():
             logger.info(f"[DRY RUN] Returning simulated price for {symbol}: {self._simulated_price}")
             return self._simulated_price
         

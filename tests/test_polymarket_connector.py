@@ -11,9 +11,34 @@ Tests the Polymarket CLOB API connector functionality including:
 
 import pytest
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 from src.trading.polymarket_connector import PolymarketConnector
 from src.trading.models import PolymarketOrder
+
+
+class _FakeResponse:
+    def __init__(self, status: int, payload: dict):
+        self.status = status
+        self._payload = payload
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+    async def json(self):
+        return self._payload
+
+
+class _FakeSession:
+    def __init__(self, status: int, payload: dict):
+        self._status = status
+        self._payload = payload
+
+    def get(self, *args, **kwargs):
+        return _FakeResponse(self._status, self._payload)
 
 
 class TestPolymarketConnectorInit:
@@ -43,6 +68,12 @@ class TestPolymarketConnectorInit:
         )
         
         assert connector._dry_run is False
+
+    def test_init_live_market_data_disabled_by_default(self):
+        """Direct connector initialization keeps live dry-run data opt-in."""
+        connector = PolymarketConnector(private_key="0" * 64)
+
+        assert connector._use_live_market_data_in_dry_run is False
     
     def test_init_simulated_state(self):
         """Test that simulated state is initialized correctly."""
@@ -110,6 +141,40 @@ class TestPolymarketConnectorDryRun:
         """Test that invalid outcome raises ValueError."""
         with pytest.raises(ValueError, match="Invalid outcome"):
             await connector.get_current_price("INVALID")
+
+    @pytest.mark.asyncio
+    async def test_get_current_price_uses_live_api_when_enabled_in_dry_run(self):
+        """Dry run can use read-only Polymarket pricing when explicitly enabled."""
+        connector = PolymarketConnector(
+            private_key="0" * 64,
+            dry_run=True,
+            use_live_market_data_in_dry_run=True,
+        )
+        connector._ensure_current_market = AsyncMock(return_value=True)
+        connector._get_session = AsyncMock(return_value=_FakeSession(200, {"price": "0.61"}))
+        connector._current_up_token_id = "up-token"
+
+        price = await connector.get_current_price("UP")
+
+        assert price == pytest.approx(0.61)
+
+    @pytest.mark.asyncio
+    async def test_get_current_price_falls_back_to_simulated_value_when_live_pricing_fails(self):
+        """Dry run should log and use simulated fallback pricing when live lookup fails."""
+        connector = PolymarketConnector(
+            private_key="0" * 64,
+            dry_run=True,
+            use_live_market_data_in_dry_run=True,
+        )
+        connector.set_simulated_price("UP", 0.73)
+        connector._ensure_current_market = AsyncMock(return_value=False)
+
+        with patch("src.trading.polymarket_connector.logger.warning") as mock_warning:
+            price = await connector.get_current_price("UP")
+
+        assert price == pytest.approx(0.73)
+        mock_warning.assert_called_once()
+        assert "Falling back to simulated price 0.7300" in mock_warning.call_args[0][0]
 
 
 class TestPolymarketOrderPlacement:
@@ -219,6 +284,46 @@ class TestPolymarketOrderPlacement:
         
         new_balance = await connector.get_balance()
         assert new_balance == initial_balance - 100.0
+
+    @pytest.mark.asyncio
+    async def test_place_order_calculates_bet_statistics(self, connector):
+        """Test dry-run order includes bet statistics derived from fill price."""
+        connector.set_simulated_price("UP", 0.50)
+
+        order = await connector.place_order(
+            outcome="UP",
+            size=10.0,
+            discount_percent=10.0,
+        )
+
+        assert order.fill_price == pytest.approx(0.45)
+        assert order.shares_bought == pytest.approx(10.0 / 0.45)
+        assert order.max_profit == pytest.approx((10.0 / 0.45) - 10.0)
+        assert order.max_loss == pytest.approx(10.0)
+
+    @pytest.mark.asyncio
+    async def test_place_order_uses_live_polymarket_price_when_enabled_in_dry_run(self):
+        """Dry-run order calculations should derive from live read-only Polymarket price when enabled."""
+        connector = PolymarketConnector(
+            private_key="0" * 64,
+            dry_run=True,
+            use_live_market_data_in_dry_run=True,
+        )
+        connector._ensure_current_market = AsyncMock(return_value=True)
+        connector._get_session = AsyncMock(return_value=_FakeSession(200, {"price": "0.61"}))
+        connector._current_up_token_id = "up-token"
+        connector._current_market_id = "market-123"
+
+        order = await connector.place_order(
+            outcome="UP",
+            size=10.0,
+            discount_percent=10.0,
+        )
+
+        assert order.price == pytest.approx(0.549)
+        assert order.fill_price == pytest.approx(0.549)
+        assert order.shares_bought == pytest.approx(10.0 / 0.549)
+        assert order.max_profit == pytest.approx((10.0 / 0.549) - 10.0)
     
     @pytest.mark.asyncio
     async def test_place_order_has_uuid(self, connector):

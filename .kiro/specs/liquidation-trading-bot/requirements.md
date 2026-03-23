@@ -205,7 +205,8 @@ The trading strategy follows the "Mundave" approach:
 #### Acceptance Criteria
 
 1. THE Trading_Bot SHALL support a dry_run configuration option (default: true)
-2. WHILE dry_run is enabled, THE Trading_Bot SHALL simulate order placement without calling exchange APIs
+2. WHILE dry_run is enabled, THE Trading_Bot SHALL simulate order placement without submitting orders to Polymarket or Binance
 3. WHILE dry_run is enabled, THE Trading_Bot SHALL log simulated orders with "[DRY RUN]" prefix
-4. WHILE dry_run is enabled, THE Trading_Bot SHALL use mock fill prices based on current market prices
+4. WHILE dry_run is enabled, THE Trading_Bot SHALL calculate simulated Polymarket entry prices, shares bought, max profit, and max loss from read-only Polymarket market data when configured to do so
 5. THE Trade_Logger SHALL record dry run trades with a `is_dry_run` flag set to true
+6. WHILE dry_run is enabled and read-only Polymarket market data is unavailable, THE Trading_Bot SHALL either block simulated order placement or fall back to explicitly logged simulated prices

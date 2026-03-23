@@ -80,6 +80,14 @@ operational:
   # Set to true for testing, false for live trading
   # WARNING: Setting to false will execute real trades with real money!
   dry_run: true
+
+  # While in dry run, use live read-only Polymarket market data for pricing
+  # and market discovery, but never submit real Polymarket or Binance orders.
+  polymarket_live_data_in_dry_run: true
+
+  # While in dry run, use live read-only Binance mark prices for BTC reference
+  # entry and exit values, while still simulating hedge order execution.
+  binance_live_data_in_dry_run: true
   
   # Directory for trade log CSV files
   # Daily logs are written as trades_YYYY-MM-DD.csv

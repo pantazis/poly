@@ -159,6 +159,11 @@ This plan implements Telegram notifications for the Liquidation Trading Bot. The
 - [x] 10. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
+- [ ] 11. Include BTC reference prices in trade notifications
+  - Show reference BTC entry price in trade entry notification when available
+  - Show reference BTC entry and exit prices in trade close notification when available
+  - _Requirements: 4.1, 4.3_
+
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for faster MVP

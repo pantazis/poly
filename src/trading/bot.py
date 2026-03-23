@@ -62,6 +62,7 @@ class TradingBot:
         self._polymarket_connector = PolymarketConnector(
             private_key=config.polymarket_private_key,
             dry_run=config.dry_run,
+            use_live_market_data_in_dry_run=config.polymarket_live_data_in_dry_run,
         )
         
         # Initialize BinanceTrader
@@ -69,6 +70,7 @@ class TradingBot:
             api_key=config.binance_api_key,
             api_secret=config.binance_api_secret,
             dry_run=config.dry_run,
+            use_live_market_data_in_dry_run=config.binance_live_data_in_dry_run,
         )
 
         # Initialize PositionManager with on_position_closed callback
@@ -461,6 +463,13 @@ class TradingBot:
             order: The filled PolymarketOrder
         """
         binance_position: BinancePosition | None = None
+        reference_entry_price: float | None = None
+
+        if self._config.dry_run:
+            try:
+                reference_entry_price = await self._binance_trader.get_current_price("BTCUSDT")
+            except Exception as e:
+                logger.warning(f"Failed to capture dry-run BTC entry price: {e}")
         
         # Only open hedge if enabled
         if self._config.hedge_enabled:
@@ -507,6 +516,7 @@ class TradingBot:
         trade_pair = await self._position_manager.open_trade_pair(
             polymarket_order=order,
             binance_position=binance_position,
+            reference_entry_price=reference_entry_price,
         )
         
         # Log order fills
@@ -526,6 +536,10 @@ class TradingBot:
                 direction=order.outcome,
                 entry_price=order.fill_price or order.price,
                 bet_size=order.size,
+                reference_entry_price=trade_pair.reference_entry_price,
+                shares_bought=order.shares_bought,
+                max_profit=order.max_profit,
+                max_loss=order.max_loss,
             )
         
         if binance_position:
@@ -581,6 +595,13 @@ class TradingBot:
                 pnl=trade_pair.binance_pnl,
                 is_dry_run=self._config.dry_run,
             )
+        elif trade_pair.polymarket_pnl is not None:
+            await self._trade_logger.log_position_closed(
+                trade_id=trade_pair.trade_id,
+                exchange="polymarket",
+                pnl=trade_pair.polymarket_pnl,
+                is_dry_run=self._config.dry_run,
+            )
         
         # Send trade close notification (Requirement 4.3)
         if self._telegram_notifier:
@@ -591,6 +612,8 @@ class TradingBot:
                 binance_pnl=trade_pair.binance_pnl,
                 total_pnl=trade_pair.total_pnl or 0.0,
                 daily_pnl=daily_pnl,
+                reference_entry_price=trade_pair.reference_entry_price,
+                reference_exit_price=trade_pair.reference_exit_price,
             )
         
         # Enable new signals

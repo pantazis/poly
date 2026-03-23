@@ -232,6 +232,10 @@ class MessageFormatter:
         direction: str,
         price: float,
         size: float,
+        reference_entry_price: float | None = None,
+        shares_bought: float | None = None,
+        max_profit: float | None = None,
+        max_loss: float | None = None,
     ) -> str:
         """Format a trade entry notification message.
         
@@ -252,6 +256,25 @@ class MessageFormatter:
         escaped_direction = MessageFormatter.escape_markdown(direction)
         formatted_price = MessageFormatter.escape_markdown(f"{price:.4f}")
         formatted_size = MessageFormatter.escape_markdown(MessageFormatter.format_usd(size))
+        stats_lines = ""
+
+        if reference_entry_price is not None:
+            stats_lines += (
+                f"\n*Reference BTC Entry:* {MessageFormatter.escape_markdown(f'{reference_entry_price:,.2f}') }"
+            )
+
+        if shares_bought is not None:
+            stats_lines += (
+                f"\n*Shares:* {MessageFormatter.escape_markdown(f'{shares_bought:.4f}')}"
+            )
+        if max_profit is not None:
+            stats_lines += (
+                f"\n*Max Profit:* {MessageFormatter.escape_markdown(MessageFormatter.format_usd(max_profit))}"
+            )
+        if max_loss is not None:
+            stats_lines += (
+                f"\n*Max Loss:* {MessageFormatter.escape_markdown(MessageFormatter.format_usd(max_loss))}"
+            )
         
         return (
             f"{mode} 💰 *Trade Entry*\n\n"
@@ -259,6 +282,7 @@ class MessageFormatter:
             f"*Direction:* {escaped_direction}\n"
             f"*Entry Price:* {formatted_price}\n"
             f"*Bet Size:* {formatted_size}"
+            f"{stats_lines}"
         )
     
     @staticmethod
@@ -304,6 +328,8 @@ class MessageFormatter:
         binance_pnl: float | None,
         total_pnl: float,
         daily_pnl: float,
+        reference_entry_price: float | None = None,
+        reference_exit_price: float | None = None,
     ) -> str:
         """Format a trade closed notification message.
         
@@ -332,6 +358,16 @@ class MessageFormatter:
         )
         total_pnl_str = MessageFormatter.escape_markdown(MessageFormatter.format_usd(total_pnl))
         daily_pnl_str = MessageFormatter.escape_markdown(MessageFormatter.format_usd(daily_pnl))
+        reference_lines = ""
+
+        if reference_entry_price is not None:
+            reference_lines += (
+                f"*Reference BTC Entry:* {MessageFormatter.escape_markdown(f'{reference_entry_price:,.2f}')}\n"
+            )
+        if reference_exit_price is not None:
+            reference_lines += (
+                f"*Reference BTC Exit:* {MessageFormatter.escape_markdown(f'{reference_exit_price:,.2f}')}\n"
+            )
         
         # Add emoji based on total PnL
         pnl_emoji = "🟢" if total_pnl >= 0 else "🔴"
@@ -339,6 +375,7 @@ class MessageFormatter:
         return (
             f"{mode} 💰 *Trade Closed* {pnl_emoji}\n\n"
             f"*Trade ID:* `{escaped_trade_id}`\n\n"
+            f"{reference_lines if reference_lines else ''}"
             f"*PnL Breakdown:*\n"
             f"• Polymarket: {poly_pnl_str}\n"
             f"• Binance: {binance_pnl_str}\n"

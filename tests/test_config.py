@@ -63,6 +63,14 @@ class TestTradingConfigDefaults:
     def test_default_dry_run(self):
         config = TradingConfig()
         assert config.dry_run is True
+
+    def test_default_polymarket_live_data_in_dry_run(self):
+        config = TradingConfig()
+        assert config.polymarket_live_data_in_dry_run is True
+
+    def test_default_binance_live_data_in_dry_run(self):
+        config = TradingConfig()
+        assert config.binance_live_data_in_dry_run is True
     
     def test_default_log_dir(self):
         config = TradingConfig()
@@ -209,27 +217,30 @@ polymarket:
         assert config.discount_percent == 10.0  # default
     
     def test_load_full_yaml(self):
-        yaml_content = """
-signal:
-  entry_threshold_min: 30000
-  entry_threshold_max: 150000
-  liquidation_window_minutes: 10
-polymarket:
-  bet_size: 25
-  discount_percent: 15
-  private_key: "test_key"
-binance:
-  hedge_leverage: 5
-  hedge_size: 20
-  api_key: "binance_key"
-  api_secret: "binance_secret"
-risk:
-  max_daily_loss: 200
-  max_concurrent_positions: 1
-operational:
-  dry_run: false
-  log_dir: "./custom_logs"
-"""
+        yaml_content = "\n".join([
+            "signal:",
+            "  entry_threshold_min: 30000",
+            "  entry_threshold_max: 150000",
+            "  liquidation_window_minutes: 10",
+            "polymarket:",
+            "  bet_size: 25",
+            "  discount_percent: 15",
+            "  private_key: \"test_key\"",
+            "binance:",
+            "  hedge_leverage: 5",
+            "  hedge_size: 20",
+            "  api_key: \"binance_key\"",
+            "  api_secret: \"binance_secret\"",
+            "risk:",
+            "  max_daily_loss: 200",
+            "  max_concurrent_positions: 1",
+            "operational:",
+            "  dry_run: false",
+            "  polymarket_live_data_in_dry_run: false",
+            "  binance_live_data_in_dry_run: false",
+            "  log_dir: \"./custom_logs\"",
+            "",
+        ])
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             f.write(yaml_content)
             f.flush()
@@ -249,6 +260,8 @@ operational:
         assert config.max_daily_loss == 200.0
         assert config.max_concurrent_positions == 1
         assert config.dry_run is False
+        assert config.polymarket_live_data_in_dry_run is False
+        assert config.binance_live_data_in_dry_run is False
         assert config.log_dir == Path("./custom_logs")
     
     def test_load_with_env_var_substitution(self):

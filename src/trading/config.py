@@ -64,6 +64,8 @@ class TradingConfig:
     
     # Operational
     dry_run: bool = True
+    polymarket_live_data_in_dry_run: bool = True
+    binance_live_data_in_dry_run: bool = True
     log_dir: Path = field(default_factory=lambda: Path("./logs"))
     
     # Telegram
@@ -181,6 +183,14 @@ class ConfigManager:
         operational = raw_config.get('operational', {})
         if 'dry_run' in operational:
             config_dict['dry_run'] = bool(operational['dry_run'])
+        if 'polymarket_live_data_in_dry_run' in operational:
+            config_dict['polymarket_live_data_in_dry_run'] = bool(
+                operational['polymarket_live_data_in_dry_run']
+            )
+        if 'binance_live_data_in_dry_run' in operational:
+            config_dict['binance_live_data_in_dry_run'] = bool(
+                operational['binance_live_data_in_dry_run']
+            )
         if 'log_dir' in operational:
             log_dir_value = ConfigManager._process_value(operational['log_dir'])
             config_dict['log_dir'] = Path(log_dir_value)

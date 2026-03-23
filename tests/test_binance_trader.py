@@ -25,6 +25,7 @@ class TestBinanceTraderInit:
         assert trader.api_secret == "test_secret"
         assert trader.api_url == "https://fapi.binance.com"
         assert trader.dry_run is True
+        assert trader._use_live_market_data_in_dry_run is False
     
     def test_init_with_custom_values(self):
         """Test initialization with custom values."""
@@ -130,6 +131,26 @@ class TestDryRunMode:
         price = await trader.get_current_price("BTCUSDT")
         
         assert price == 50000.0  # Default simulated price
+
+    @pytest.mark.asyncio
+    async def test_get_current_price_dry_run_uses_live_api_when_enabled(self):
+        """Dry run should use live public price data when explicitly enabled."""
+        trader = BinanceTrader(
+            api_key="key",
+            api_secret="secret",
+            dry_run=True,
+            use_live_market_data_in_dry_run=True,
+        )
+
+        trader._public_request = AsyncMock(return_value={"markPrice": "50321.5"})
+
+        price = await trader.get_current_price("BTCUSDT")
+
+        assert price == 50321.5
+        trader._public_request.assert_awaited_once_with(
+            "/fapi/v1/premiumIndex",
+            {"symbol": "BTCUSDT"}
+        )
     
     @pytest.mark.asyncio
     async def test_set_leverage_dry_run(self):

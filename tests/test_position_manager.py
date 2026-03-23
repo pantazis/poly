@@ -16,6 +16,8 @@ def mock_binance_trader():
     """Create a mock BinanceTrader."""
     trader = MagicMock(spec=BinanceTrader)
     trader.close_position = AsyncMock()
+    trader.get_current_price = AsyncMock(return_value=50000.0)
+    trader.dry_run = False
     return trader
 
 
@@ -32,6 +34,9 @@ def sample_polymarket_order():
         status="filled",
         fill_price=0.45,
         fill_time=datetime.now(timezone.utc),
+        shares_bought=10.0 / 0.45,
+        max_profit=(10.0 / 0.45) - 10.0,
+        max_loss=10.0,
     )
 
 
@@ -422,6 +427,62 @@ class TestCloseTradePair:
         mock_binance_trader.close_position.assert_not_called()
         assert closed_trade.status == "closed"
         assert closed_trade.binance_pnl is None
+
+    @pytest.mark.asyncio
+    async def test_calculates_dry_run_polymarket_profit_for_up_win(
+        self, mock_binance_trader, sample_polymarket_order
+    ):
+        """Dry-run UP trade should win when BTC is higher at expiry."""
+        mock_binance_trader.dry_run = True
+        mock_binance_trader.get_current_price = AsyncMock(return_value=51000.0)
+
+        manager = PositionManager(binance_trader=mock_binance_trader)
+        trade_pair = await manager.open_trade_pair(
+            sample_polymarket_order,
+            None,
+            reference_entry_price=50000.0,
+        )
+
+        closed_trade = await manager.close_trade_pair(trade_pair.trade_id)
+
+        assert closed_trade.polymarket_pnl == pytest.approx((10.0 / 0.45) - 10.0, rel=1e-3)
+        assert closed_trade.total_pnl == closed_trade.polymarket_pnl
+        assert closed_trade.reference_exit_price == 51000.0
+
+    @pytest.mark.asyncio
+    async def test_calculates_dry_run_polymarket_loss_for_down_loss(
+        self, mock_binance_trader
+    ):
+        """Dry-run DOWN trade should lose the full stake when BTC rises."""
+        mock_binance_trader.dry_run = True
+        mock_binance_trader.get_current_price = AsyncMock(return_value=51000.0)
+
+        down_order = PolymarketOrder(
+            order_id="pm-order-down",
+            market_id="btc-5min-binary",
+            outcome="DOWN",
+            side="BUY",
+            size=10.0,
+            price=0.45,
+            status="filled",
+            fill_price=0.45,
+            fill_time=datetime.now(timezone.utc),
+            shares_bought=10.0 / 0.45,
+            max_profit=(10.0 / 0.45) - 10.0,
+            max_loss=10.0,
+        )
+
+        manager = PositionManager(binance_trader=mock_binance_trader)
+        trade_pair = await manager.open_trade_pair(
+            down_order,
+            None,
+            reference_entry_price=50000.0,
+        )
+
+        closed_trade = await manager.close_trade_pair(trade_pair.trade_id)
+
+        assert closed_trade.polymarket_pnl == -10.0
+        assert closed_trade.total_pnl == -10.0
 
 
 class TestCheckExpiries:

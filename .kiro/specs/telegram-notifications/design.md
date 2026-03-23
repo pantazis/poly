@@ -55,6 +55,7 @@ graph TB
 3. **TradingBot._handle_signal()**: Send signal notification (detected or blocked)
 4. **TradingBot._handle_polymarket_fill()**: Send trade entry notification
 5. **TradingBot._handle_position_closed()**: Send trade close notification with PnL
+6. **TradePair reference prices**: Reuse stored BTC reference entry/exit prices in notifications when available
 
 ## Components and Interfaces
 
@@ -120,6 +121,7 @@ class TelegramNotifier:
         direction: str,
         entry_price: float,
         bet_size: float,
+        reference_entry_price: float | None = None,
     ) -> None: ...
     
     async def send_hedge_opened(
@@ -137,6 +139,8 @@ class TelegramNotifier:
         binance_pnl: float | None,
         total_pnl: float,
         daily_pnl: float,
+        reference_entry_price: float | None = None,
+        reference_exit_price: float | None = None,
     ) -> None: ...
     
     async def send_error(

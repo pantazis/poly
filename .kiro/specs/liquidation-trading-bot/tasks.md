@@ -138,7 +138,7 @@ This plan implements an automated trading bot that monitors liquidation data fro
 
   - [x] 10.2 Implement dry run mode in all exchange connectors
     - Add simulated order/position creation without API calls
-    - Use current market prices for mock fills
+    - Use read-only Polymarket market data for dry-run pricing when configured
     - Set is_dry_run flag in all log entries
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
 

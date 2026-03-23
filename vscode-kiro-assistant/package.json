@@ -1,0 +1,76 @@
+{
+  "name": "vscode-kiro-assistant",
+  "displayName": "Kiro Workflow Assistant",
+  "description": "Adds Kiro-style spec workflows, project memory, task detection, and prompt pipelines to VS Code.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:kiroAssistant.toggleMode",
+    "onCommand:kiroAssistant.bootstrapSpec",
+    "onCommand:kiroAssistant.scanTasks",
+    "onCommand:kiroAssistant.planBuildImprove",
+    "onCommand:kiroAssistant.runSlashCommand",
+    "onCommand:kiroAssistant.saveProjectMemory",
+    "onCommand:kiroAssistant.openProjectMemory"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "kiroAssistant.toggleMode",
+        "title": "Kiro Assistant: Toggle Mode"
+      },
+      {
+        "command": "kiroAssistant.bootstrapSpec",
+        "title": "Kiro Assistant: Create Spec"
+      },
+      {
+        "command": "kiroAssistant.scanTasks",
+        "title": "Kiro Assistant: Scan Tasks"
+      },
+      {
+        "command": "kiroAssistant.planBuildImprove",
+        "title": "Kiro Assistant: Plan Build Improve"
+      },
+      {
+        "command": "kiroAssistant.runSlashCommand",
+        "title": "Kiro Assistant: Run Slash Command"
+      },
+      {
+        "command": "kiroAssistant.saveProjectMemory",
+        "title": "Kiro Assistant: Save Project Memory"
+      },
+      {
+        "command": "kiroAssistant.openProjectMemory",
+        "title": "Kiro Assistant: Open Project Memory"
+      }
+    ],
+    "configuration": {
+      "title": "Kiro Workflow Assistant",
+      "properties": {
+        "kiroAssistant.maxContextFiles": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "description": "Maximum number of files to include when building coding context."
+        },
+        "kiroAssistant.maxSnippetLength": {
+          "type": "number",
+          "default": 1200,
+          "minimum": 200,
+          "description": "Maximum number of characters captured from each file snippet."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test --test-isolation=none ./test/*.test.js"
+  }
+}

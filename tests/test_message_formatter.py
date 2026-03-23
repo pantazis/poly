@@ -354,6 +354,25 @@ class TestFormatTradeEntry:
         result = MessageFormatter.format_trade_entry(True, "abc-123", "UP", 0.5500, 100.0)
         assert "$100\\.00" in result
 
+    def test_contains_bet_statistics_when_provided(self):
+        """Trade entry message should contain dry-run bet statistics."""
+        result = MessageFormatter.format_trade_entry(
+            True,
+            "abc-123",
+            "UP",
+            0.4500,
+            10.0,
+            reference_entry_price=50123.45,
+            shares_bought=22.2222,
+            max_profit=12.2222,
+            max_loss=10.0,
+        )
+        assert "Reference BTC Entry" in result
+        assert "50,123\\.45" in result
+        assert "22\\.2222" in result
+        assert "$12\\.22" in result
+        assert "$10\\.00" in result
+
 
 class TestFormatHedgeOpened:
     """Tests for format_hedge_opened() method."""
@@ -403,6 +422,23 @@ class TestFormatTradeClosed:
         """Trade closed message should contain daily PnL."""
         result = MessageFormatter.format_trade_closed(True, "abc-123", 50.0, -20.0, 30.0, 100.0)
         assert "$100\\.00" in result  # daily pnl
+
+    def test_contains_reference_prices_when_provided(self):
+        """Trade closed message should contain explicitly labeled BTC reference prices when available."""
+        result = MessageFormatter.format_trade_closed(
+            True,
+            "abc-123",
+            50.0,
+            -20.0,
+            30.0,
+            100.0,
+            reference_entry_price=50000.0,
+            reference_exit_price=49750.5,
+        )
+        assert "Reference BTC Entry" in result
+        assert "Reference BTC Exit" in result
+        assert "50,000\\.00" in result
+        assert "49,750\\.50" in result
     
     def test_positive_pnl_green_emoji(self):
         """Positive PnL should show green emoji."""

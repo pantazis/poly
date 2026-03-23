@@ -62,6 +62,7 @@ class TestTradingBotInit:
         bot = TradingBot(config=trading_config, collector=mock_collector)
         
         assert bot._polymarket_connector._dry_run is True
+        assert bot._polymarket_connector._use_live_market_data_in_dry_run is True
         assert bot._binance_trader.dry_run is True
     
     def test_init_configures_signal_detector_thresholds(self, trading_config, mock_collector):
@@ -348,6 +349,31 @@ class TestTradingBotHandlePolymarketFill:
         # After fill, signals should be blocked
         assert bot._signal_detector._position_open is True
 
+    @pytest.mark.asyncio
+    async def test_handle_fill_sends_reference_entry_price_in_notification(
+        self, trading_config, mock_collector, filled_order
+    ):
+        """Trade entry notification should include BTC reference entry price when captured."""
+        bot = TradingBot(config=trading_config, collector=mock_collector)
+
+        bot._config.hedge_enabled = False
+        bot._binance_trader.get_current_price = AsyncMock(return_value=50000.0)
+        bot._trade_logger.log_order_filled = AsyncMock()
+        bot._telegram_notifier = AsyncMock()
+
+        await bot._handle_polymarket_fill(filled_order)
+
+        bot._telegram_notifier.send_trade_entry.assert_called_once_with(
+            trade_id=bot._position_manager.get_open_position().trade_id,
+            direction=filled_order.outcome,
+            entry_price=filled_order.fill_price or filled_order.price,
+            bet_size=filled_order.size,
+            reference_entry_price=50000.0,
+            shares_bought=filled_order.shares_bought,
+            max_profit=filled_order.max_profit,
+            max_loss=filled_order.max_loss,
+        )
+
 
 class TestTradingBotHandlePositionClosed:
     """Tests for position closed callback."""
@@ -442,6 +468,97 @@ class TestTradingBotHandlePositionClosed:
             exchange="binance",
             pnl=5.0,
             is_dry_run=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_position_closed_logs_polymarket_when_no_hedge(
+        self, trading_config, mock_collector
+    ):
+        """Position close should log Polymarket PnL when hedge is absent."""
+        bot = TradingBot(config=trading_config, collector=mock_collector)
+        bot._trade_logger.log_position_closed = AsyncMock()
+
+        polymarket_order = PolymarketOrder(
+            order_id="test-order",
+            market_id="btc-5min-binary",
+            outcome="UP",
+            side="BUY",
+            size=10.0,
+            price=0.45,
+            status="filled",
+            fill_price=0.45,
+            fill_time=datetime.now(timezone.utc),
+            shares_bought=10.0 / 0.45,
+            max_profit=(10.0 / 0.45) - 10.0,
+            max_loss=10.0,
+        )
+        closed_trade_pair = TradePair(
+            trade_id="test-trade-no-hedge",
+            polymarket_order=polymarket_order,
+            binance_position=None,
+            direction="UP",
+            entry_time=datetime.now(timezone.utc),
+            expiry_time=datetime.now(timezone.utc),
+            status="closed",
+            polymarket_pnl=12.22,
+            binance_pnl=None,
+            total_pnl=12.22,
+        )
+
+        await bot._handle_position_closed(closed_trade_pair)
+
+        bot._trade_logger.log_position_closed.assert_called_once_with(
+            trade_id="test-trade-no-hedge",
+            exchange="polymarket",
+            pnl=12.22,
+            is_dry_run=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_position_closed_sends_reference_prices(
+        self, trading_config, mock_collector
+    ):
+        """Trade close notification should include stored BTC entry and exit prices."""
+        bot = TradingBot(config=trading_config, collector=mock_collector)
+        bot._trade_logger.log_position_closed = AsyncMock()
+        bot._telegram_notifier = AsyncMock()
+
+        polymarket_order = PolymarketOrder(
+            order_id="test-order",
+            market_id="btc-5min-binary",
+            outcome="UP",
+            side="BUY",
+            size=10.0,
+            price=0.45,
+            status="filled",
+            fill_price=0.45,
+            fill_time=datetime.now(timezone.utc),
+        )
+        closed_trade_pair = TradePair(
+            trade_id="test-trade-reference-prices",
+            polymarket_order=polymarket_order,
+            binance_position=None,
+            direction="UP",
+            entry_time=datetime.now(timezone.utc),
+            expiry_time=datetime.now(timezone.utc),
+            status="closed",
+            polymarket_pnl=12.22,
+            binance_pnl=None,
+            total_pnl=12.22,
+            reference_entry_price=50000.0,
+            reference_exit_price=51000.0,
+        )
+
+        await bot._handle_position_closed(closed_trade_pair)
+
+        bot._telegram_notifier.send_trade_closed.assert_called_once_with(
+            trade_id="test-trade-reference-prices",
+            polymarket_pnl=12.22,
+            binance_pnl=None,
+            total_pnl=12.22,
+            daily_pnl=12.22,
+            reference_entry_price=50000.0,
+            reference_exit_price=51000.0,
         )
 
 

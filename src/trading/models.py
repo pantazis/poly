@@ -62,6 +62,9 @@ class PolymarketOrder:
     status: str             # "pending", "filled", "cancelled", "expired"
     fill_price: float | None
     fill_time: datetime | None
+    shares_bought: float | None = None
+    max_profit: float | None = None
+    max_loss: float | None = None
 
 
 @dataclass
@@ -123,6 +126,8 @@ class TradePair:
     polymarket_pnl: float | None
     binance_pnl: float | None
     total_pnl: float | None
+    reference_entry_price: float | None = None
+    reference_exit_price: float | None = None
 
 
 @dataclass
