@@ -25,7 +25,10 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Awaitable, Callable
 
-import websockets
+try:
+    import websockets
+except ImportError:  # pragma: no cover - allows offline/unit-test imports without ws deps
+    websockets = None  # type: ignore[assignment]
 
 try:
     from sklearn.feature_extraction.text import HashingVectorizer
@@ -77,6 +80,54 @@ def _configure_decision_log_file(
     )
     decision_logger.addHandler(file_handler)
     return decision_logger
+
+
+def _configure_confidence_log_file(
+    confidence_log_path: str,
+    max_bytes: int,
+    backup_count: int,
+) -> logging.Logger:
+    """Configure rolling confidence-winrate log output."""
+    confidence_logger = logging.getLogger(f"{__name__}.confidence")
+    confidence_logger.setLevel(logging.INFO)
+    confidence_logger.propagate = False
+
+    log_path = Path(confidence_log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.touch(exist_ok=True)
+    resolved = str(log_path.resolve())
+
+    for handler in confidence_logger.handlers:
+        if isinstance(handler, RotatingFileHandler):
+            if Path(handler.baseFilename).resolve() == log_path.resolve():
+                return confidence_logger
+
+    file_handler = RotatingFileHandler(
+        filename=resolved,
+        maxBytes=max(1024, int(max_bytes)),
+        backupCount=max(1, int(backup_count)),
+        encoding="utf-8",
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    )
+    confidence_logger.addHandler(file_handler)
+    return confidence_logger
+
+
+def _trim_log_to_last_lines(log_path: str, max_lines: int) -> None:
+    """Keep only the latest max_lines lines in a log file."""
+    keep = max(1, int(max_lines))
+    path = Path(log_path)
+    if not path.exists():
+        return
+    with path.open("r", encoding="utf-8") as f:
+        lines = f.readlines()
+    if len(lines) <= keep:
+        return
+    with path.open("w", encoding="utf-8") as f:
+        f.writelines(lines[-keep:])
 
 
 def _log_lifecycle(
@@ -584,6 +635,77 @@ class CalibrationTracker:
         return obj
 
 
+class ConfidenceWinrateTracker:
+    """Track cumulative winrate for confidence thresholds (e.g. >=90, >=80, ...)."""
+
+    def __init__(self, thresholds: list[int] | None = None):
+        raw = thresholds or list(range(90, 0, -10))
+        cleaned = sorted(
+            {
+                int(t)
+                for t in raw
+                if 0 < int(t) <= 100
+            },
+            reverse=True,
+        )
+        self._thresholds = cleaned if cleaned else list(range(90, 0, -10))
+        self._wins = {threshold: 0 for threshold in self._thresholds}
+        self._totals = {threshold: 0 for threshold in self._thresholds}
+
+    @property
+    def thresholds(self) -> list[int]:
+        return list(self._thresholds)
+
+    def update(self, confidence: float, correct: bool) -> None:
+        confidence_pct = min(max(confidence * 100.0, 0.0), 100.0)
+        for threshold in self._thresholds:
+            if confidence_pct >= threshold:
+                self._totals[threshold] += 1
+                if correct:
+                    self._wins[threshold] += 1
+
+    def summary_rows(self) -> list[dict[str, int | float]]:
+        rows: list[dict[str, int | float]] = []
+        for threshold in self._thresholds:
+            wins = self._wins[threshold]
+            total = self._totals[threshold]
+            winrate_pct = (wins / total * 100.0) if total > 0 else 0.0
+            rows.append(
+                {
+                    "threshold": threshold,
+                    "wins": wins,
+                    "total": total,
+                    "winrate_pct": winrate_pct,
+                }
+            )
+        return rows
+
+
+def _log_confidence_winrate_snapshot(
+    confidence_logger: logging.Logger,
+    tracker: ConfidenceWinrateTracker,
+    minute: str,
+    source: str,
+    confidence_log_path: str,
+    confidence_log_max_lines: int,
+) -> None:
+    """Write confidence-threshold winrates to dedicated log file."""
+    for row in tracker.summary_rows():
+        confidence_logger.info(
+            "WINRATE minute=%s source=%s confidence_gt=%d wins=%d total=%d winrate=%.2f%%",
+            minute,
+            source,
+            int(row["threshold"]),
+            int(row["wins"]),
+            int(row["total"]),
+            float(row["winrate_pct"]),
+        )
+    _trim_log_to_last_lines(
+        log_path=confidence_log_path,
+        max_lines=confidence_log_max_lines,
+    )
+
+
 class OBLMEngine:
     """End-to-end quantize -> predict -> delayed-label update loop."""
 
@@ -737,6 +859,11 @@ async def run_oblm_training(
     decision_log_path: str = "logs/oblm/decisions.log",
     decision_log_max_bytes: int = 2_000_000,
     decision_log_backup_count: int = 5,
+    decision_log_max_lines: int = 100,
+    confidence_log_path: str = "logs/oblm/confidence_winrate.log",
+    confidence_log_max_bytes: int = 2_000_000,
+    confidence_log_backup_count: int = 5,
+    confidence_log_max_lines: int = 10,
 ) -> None:
     """Run live OBLM training loop and persist only model state.
 
@@ -751,6 +878,12 @@ async def run_oblm_training(
         max_bytes=decision_log_max_bytes,
         backup_count=decision_log_backup_count,
     )
+    confidence_logger = _configure_confidence_log_file(
+        confidence_log_path=confidence_log_path,
+        max_bytes=confidence_log_max_bytes,
+        backup_count=confidence_log_backup_count,
+    )
+    confidence_tracker = ConfidenceWinrateTracker()
     _log_lifecycle(
         decision_logger,
         "startup",
@@ -758,6 +891,10 @@ async def run_oblm_training(
         model_path=model_path,
         save_interval_minutes=max(1, save_interval_minutes),
         rolling_window=rolling_window,
+    )
+    _trim_log_to_last_lines(
+        log_path=decision_log_path,
+        max_lines=decision_log_max_lines,
     )
 
     checkpoint = Path(model_path)
@@ -833,6 +970,20 @@ async def run_oblm_training(
         decision_log_max_bytes,
         decision_log_backup_count,
     )
+    logger.info(
+        "Confidence rolling log enabled: file=%s max_bytes=%d backups=%d",
+        confidence_log_path,
+        confidence_log_max_bytes,
+        confidence_log_backup_count,
+    )
+    confidence_logger.info(
+        "CONFIDENCE_TRACKER thresholds=%s",
+        ",".join(str(t) for t in confidence_tracker.thresholds),
+    )
+    _trim_log_to_last_lines(
+        log_path=confidence_log_path,
+        max_lines=confidence_log_max_lines,
+    )
 
     latest_state: MarketState | None = None
 
@@ -850,7 +1001,13 @@ async def run_oblm_training(
             state.candle.volume,
         )
         output = engine.process_market_state(state)
+        has_new_settlement = False
         for settled in engine.last_settlements:
+            has_new_settlement = True
+            confidence_tracker.update(
+                confidence=float(settled["confidence"]),
+                correct=bool(settled["correct"]),
+            )
             _log_lifecycle(
                 decision_logger,
                 "settle",
@@ -862,6 +1019,15 @@ async def run_oblm_training(
                 confidence=f"{float(settled['confidence']):.3f}",
                 ref_close=f"{float(settled['reference_price']):.2f}",
                 eval_close=f"{float(settled['eval_price']):.2f}",
+            )
+        if has_new_settlement:
+            _log_confidence_winrate_snapshot(
+                confidence_logger=confidence_logger,
+                tracker=confidence_tracker,
+                minute=output.timestamp,
+                source="settlement",
+                confidence_log_path=confidence_log_path,
+                confidence_log_max_lines=confidence_log_max_lines,
             )
         move = "UP" if output.direction == "BULL" else "DOWN"
         probability_pct = output.probability * 100.0
@@ -896,6 +1062,10 @@ async def run_oblm_training(
             float(calibration.get("ece", 0.0)),
             model_exists,
             model_size,
+        )
+        _trim_log_to_last_lines(
+            log_path=decision_log_path,
+            max_lines=decision_log_max_lines,
         )
 
     pipeline = BinanceMarketDataPipeline(
@@ -939,6 +1109,18 @@ async def run_oblm_training(
                 model_exists,
                 model_size,
             )
+            _trim_log_to_last_lines(
+                log_path=decision_log_path,
+                max_lines=decision_log_max_lines,
+            )
+            _log_confidence_winrate_snapshot(
+                confidence_logger=confidence_logger,
+                tracker=confidence_tracker,
+                minute=now_minute,
+                source="heartbeat",
+                confidence_log_path=confidence_log_path,
+                confidence_log_max_lines=confidence_log_max_lines,
+            )
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -976,6 +1158,18 @@ async def run_oblm_training(
             model_exists=model_exists,
             model_size=model_size,
             source="shutdown",
+        )
+        _trim_log_to_last_lines(
+            log_path=decision_log_path,
+            max_lines=decision_log_max_lines,
+        )
+        _log_confidence_winrate_snapshot(
+            confidence_logger=confidence_logger,
+            tracker=confidence_tracker,
+            minute=_minute_floor(datetime.now(timezone.utc)).isoformat(),
+            source="shutdown",
+            confidence_log_path=confidence_log_path,
+            confidence_log_max_lines=confidence_log_max_lines,
         )
         _log_lifecycle(decision_logger, "shutdown", stage="complete")
 
@@ -1037,6 +1231,10 @@ class BinanceMarketDataPipeline:
         url: str,
         handler: Callable[[dict], Awaitable[None]],
     ) -> None:
+        if websockets is None:
+            raise RuntimeError(
+                "websockets package is required for live OBLM training pipeline"
+            )
         backoff = 1.0
         stream = "depth" if "@depth" in url else "kline"
         while self._running:
@@ -1158,6 +1356,35 @@ def _parse_oblm_args() -> argparse.Namespace:
         default=5,
         help="Number of rotated decision log backups",
     )
+    parser.add_argument(
+        "--decision-log-max-lines",
+        type=int,
+        default=100,
+        help="Keep only the latest N lines in decision log",
+    )
+    parser.add_argument(
+        "--confidence-log-path",
+        default="logs/oblm/confidence_winrate.log",
+        help="Confidence winrate log file path",
+    )
+    parser.add_argument(
+        "--confidence-log-max-bytes",
+        type=int,
+        default=2_000_000,
+        help="Confidence log max file size before rotation",
+    )
+    parser.add_argument(
+        "--confidence-log-backup-count",
+        type=int,
+        default=5,
+        help="Number of rotated confidence log backups",
+    )
+    parser.add_argument(
+        "--confidence-log-max-lines",
+        type=int,
+        default=10,
+        help="Keep only the latest N lines in confidence log",
+    )
     return parser.parse_args()
 
 
@@ -1186,6 +1413,11 @@ def main() -> None:
             decision_log_path=args.decision_log_path,
             decision_log_max_bytes=args.decision_log_max_bytes,
             decision_log_backup_count=args.decision_log_backup_count,
+            decision_log_max_lines=args.decision_log_max_lines,
+            confidence_log_path=args.confidence_log_path,
+            confidence_log_max_bytes=args.confidence_log_max_bytes,
+            confidence_log_backup_count=args.confidence_log_backup_count,
+            confidence_log_max_lines=args.confidence_log_max_lines,
         )
     )
 
