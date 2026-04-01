@@ -1,6 +1,16 @@
-version: '3.8'
-
 services:
+  metrics-sqlite:
+    image: coleifer/sqlite-web:latest
+    container_name: oblm-metrics-sqlite
+    restart: unless-stopped
+    command: ["sqlite_web", "/data/oblm/metrics.db", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:8080"
+    networks:
+      - trading-net
+
   trading-bot:
     build: .
     container_name: liquidation-trading-bot
@@ -25,7 +35,21 @@ services:
     build: .
     container_name: oblm-trainer
     restart: unless-stopped
-    command: ["python", "-m", "src.trading.oblm"]
+    command:
+      [
+        "python",
+        "/app/src/trading/oblm_v2.py",
+        "--rolling-window",
+        "10080",
+        "--warmup-candles",
+        "1",
+        "--min-total-for-log",
+        "1",
+        "--trading-session-enabled",
+        "false"
+      ]
+    depends_on:
+      - metrics-sqlite
     env_file:
       - .env
     volumes:

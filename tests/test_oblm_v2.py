@@ -18,6 +18,7 @@ MarketState = _OBLM_V2.MarketState
 RollingIndicatorState = _OBLM_V2.RollingIndicatorState
 SymbolicPatternTracker = _OBLM_V2.SymbolicPatternTracker
 OBLMEngine = _OBLM_V2.OBLMEngine
+ConfidenceWinrateTracker = _OBLM_V2.ConfidenceWinrateTracker
 
 
 def _market_state(ts: datetime, open_price: float, close_price: float, volume: float = 100.0) -> MarketState:
@@ -67,9 +68,30 @@ def test_pattern_tracker_produces_bullish_gradient_for_win_dominant_fragment():
     assert any(row["signal"] == "Bullish" for row in settled["gradient_rows"])
 
 
-def test_engine_settles_prediction_on_trailing_stop_hit():
-    engine = OBLMEngine(trailing_stop_pct=0.01, warmup_candles=1)
-    t0 = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+def test_confidence_winrate_tracker_uses_rolling_100_window():
+    tracker = ConfidenceWinrateTracker(thresholds=[50], rolling_window=100)
+
+    # 120 outcomes: first 20 losses, next 100 wins.
+    for i in range(120):
+        tracker.update(confidence=0.9, correct=(i >= 20), vol2h_bucket="MID")
+
+    row = tracker.summary_rows()[0]
+    assert row["threshold"] == 50
+    assert row["total"] == 100
+    assert row["wins"] == 100
+
+    # Add 10 losses -> rolling window should now contain 90 wins + 10 losses.
+    for _ in range(10):
+        tracker.update(confidence=0.9, correct=False, vol2h_bucket="MID")
+
+    row2 = tracker.summary_rows()[0]
+    assert row2["total"] == 100
+    assert row2["wins"] == 90
+
+
+def test_engine_settles_prediction_after_holding_minutes():
+    engine = OBLMEngine(holding_minutes=1, warmup_candles=1)
+    t0 = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
     t1 = t0 + timedelta(minutes=1)
 
     # First state creates a long pending prediction (default 0.5 => BULL).
@@ -82,3 +104,30 @@ def test_engine_settles_prediction_on_trailing_stop_hit():
     assert len(settlements) >= 1
     assert settlements[0]["predicted"] == "BULL"
     assert settlements[0]["correct"] is False
+
+
+def test_engine_default_allows_24_7_trading():
+    engine = OBLMEngine(warmup_candles=1)
+
+    sunday = datetime(2026, 1, 4, 10, 0, tzinfo=timezone.utc)  # Sunday
+    out = engine.process_market_state(_market_state(sunday, open_price=100.0, close_price=101.0))
+    assert out.action == "TRADE"
+
+
+def test_engine_blocks_trading_outside_configured_weekday_session_when_enabled():
+    engine = OBLMEngine(
+        warmup_candles=1,
+        trading_session_enabled=True,
+        trading_session_weekdays_only=True,
+        trading_session_start_hour_utc=9,
+        trading_session_end_hour_utc=19,
+    )
+
+    sunday = datetime(2026, 1, 4, 10, 0, tzinfo=timezone.utc)  # Sunday
+    out = engine.process_market_state(_market_state(sunday, open_price=100.0, close_price=101.0))
+    assert out.action == "NO_TRADE"
+    assert out.reason == "outside_trading_session"
+
+    monday = datetime(2026, 1, 5, 10, 0, tzinfo=timezone.utc)  # Monday 10:00 UTC
+    inside = engine.process_market_state(_market_state(monday, open_price=101.0, close_price=102.0))
+    assert inside.action == "TRADE"

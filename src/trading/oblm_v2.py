@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import json
 import logging
 import math
@@ -160,6 +161,112 @@ def _trim_log_to_last_lines(log_path: str, max_lines: int) -> None:
         f.writelines(lines[-keep:])
 
 
+def _parse_timestamp_like(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, (int, float)):
+        raw = float(value)
+        # Heuristic: values larger than ~year 2286 in seconds are very likely milliseconds.
+        if raw > 10_000_000_000:
+            raw = raw / 1000.0
+        return datetime.fromtimestamp(raw, tz=timezone.utc)
+
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return _parse_timestamp_like(int(text))
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _load_prefill_candles(path: str, limit: int = 10080) -> list["Candle1m"]:
+    """Load 1m candles from common Freqtrade exports (JSON/CSV)."""
+
+    source = Path(path)
+    if not source.exists():
+        raise FileNotFoundError(f"Prefill candles file not found: {source}")
+
+    def _from_row(row: dict[str, object]) -> Candle1m | None:
+        ts = _parse_timestamp_like(
+            row.get("timestamp")
+            or row.get("date")
+            or row.get("datetime")
+            or row.get("time")
+            or row.get("t")
+        )
+        if ts is None:
+            return None
+        try:
+            return Candle1m(
+                timestamp=ts,
+                open=float(row.get("open") or row.get("o") or 0.0),
+                high=float(row.get("high") or row.get("h") or 0.0),
+                low=float(row.get("low") or row.get("l") or 0.0),
+                close=float(row.get("close") or row.get("c") or 0.0),
+                volume=float(row.get("volume") or row.get("v") or 0.0),
+            )
+        except (TypeError, ValueError):
+            return None
+
+    candles: list[Candle1m] = []
+    suffix = source.suffix.lower()
+    if suffix == ".csv":
+        with source.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for raw in reader:
+                item = _from_row({k.lower(): v for k, v in raw.items()})
+                if item is not None:
+                    candles.append(item)
+    else:
+        # JSON variants supported:
+        # - [[ts, open, high, low, close, volume], ...]
+        # - [{timestamp/open/high/low/close/volume}, ...]
+        # - {"data": [...]} / {"candles": [...]} / {"ohlcv": [...]} / {"rows": [...]}.
+        with source.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            for key in ("data", "candles", "ohlcv", "rows"):
+                if key in payload:
+                    payload = payload[key]
+                    break
+        if not isinstance(payload, list):
+            raise ValueError("Unsupported prefill format: expected list-like candle payload")
+
+        for entry in payload:
+            if isinstance(entry, dict):
+                item = _from_row({str(k).lower(): v for k, v in entry.items()})
+                if item is not None:
+                    candles.append(item)
+                continue
+            if isinstance(entry, list | tuple) and len(entry) >= 6:
+                ts = _parse_timestamp_like(entry[0])
+                if ts is None:
+                    continue
+                try:
+                    candles.append(
+                        Candle1m(
+                            timestamp=ts,
+                            open=float(entry[1]),
+                            high=float(entry[2]),
+                            low=float(entry[3]),
+                            close=float(entry[4]),
+                            volume=float(entry[5]),
+                        )
+                    )
+                except (TypeError, ValueError):
+                    continue
+
+    candles.sort(key=lambda c: c.timestamp)
+    keep = max(1, int(limit))
+    return candles[-keep:]
+
+
 def _utc_from_ms(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
 
@@ -168,6 +275,34 @@ def _minute_floor(ts: datetime) -> datetime:
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
     return ts.replace(second=0, microsecond=0)
+
+
+def _is_trading_session_open(
+    minute: datetime,
+    enabled: bool,
+    weekdays_only: bool,
+    start_hour_utc: int,
+    end_hour_utc: int,
+) -> bool:
+    """Return True when trading-session gate allows this minute.
+
+    When disabled, trading is allowed 24/7.
+    When enabled, a UTC hour window and optional weekday filter are applied.
+    """
+    if not enabled:
+        return True
+
+    ts = minute if minute.tzinfo is not None else minute.replace(tzinfo=timezone.utc)
+    if weekdays_only and ts.weekday() >= 5:
+        return False
+
+    start = int(start_hour_utc) % 24
+    end = int(end_hour_utc) % 24
+    if start == end:
+        return True
+    if start < end:
+        return start <= ts.hour < end
+    return ts.hour >= start or ts.hour < end
 
 
 def _opposite_direction(direction: str) -> str:
@@ -256,6 +391,9 @@ class PredictionOutput:
     direction: str
     probability: float
     timestamp: str
+    action: str = "TRADE"
+    uncertainty: float = 0.0
+    reason: str = "ok"
 
 
 @dataclass
@@ -746,30 +884,34 @@ class CalibrationTracker:
 
 
 class ConfidenceWinrateTracker:
-    def __init__(self, thresholds: list[int] | None = None):
+    def __init__(self, thresholds: list[int] | None = None, rolling_window: int = 100):
         raw = thresholds or list(range(90, 0, -10))
         cleaned = sorted({int(t) for t in raw if 0 < int(t) <= 100}, reverse=True)
         self._thresholds = cleaned if cleaned else list(range(90, 0, -10))
-        self._wins = {threshold: 0 for threshold in self._thresholds}
-        self._totals = {threshold: 0 for threshold in self._thresholds}
+        self._vol2h_buckets = ["VLOW", "LOW", "MID", "HIGH", "VHIGH", "NA"]
+        self._rolling_window = max(1, int(rolling_window))
+        self._recent: deque[tuple[float, bool, str]] = deque(maxlen=self._rolling_window)
 
     @property
     def thresholds(self) -> list[int]:
         return list(self._thresholds)
 
-    def update(self, confidence: float, correct: bool) -> None:
-        confidence_pct = min(max(confidence * 100.0, 0.0), 100.0)
-        for threshold in self._thresholds:
-            if confidence_pct >= threshold:
-                self._totals[threshold] += 1
-                if correct:
-                    self._wins[threshold] += 1
+    def update(self, confidence: float, correct: bool, vol2h_bucket: str | None = None) -> None:
+        bucket = str(vol2h_bucket or "NA").upper()
+        if bucket not in self._vol2h_buckets:
+            bucket = "NA"
+        self._recent.append((float(confidence), bool(correct), bucket))
 
     def summary_rows(self) -> list[dict[str, int | float]]:
         rows: list[dict[str, int | float]] = []
         for threshold in self._thresholds:
-            wins = self._wins[threshold]
-            total = self._totals[threshold]
+            wins = 0
+            total = 0
+            for conf, correct, _bucket in self._recent:
+                if conf * 100.0 >= threshold:
+                    total += 1
+                    if correct:
+                        wins += 1
             winrate_pct = (wins / total * 100.0) if total > 0 else 0.0
             rows.append(
                 {
@@ -779,6 +921,31 @@ class ConfidenceWinrateTracker:
                     "winrate_pct": winrate_pct,
                 }
             )
+        return rows
+
+    def summary_rows_vol2h_by_threshold(self) -> list[dict[str, int | float | str]]:
+        rows: list[dict[str, int | float | str]] = []
+        for bucket in self._vol2h_buckets:
+            for threshold in self._thresholds:
+                wins = 0
+                total = 0
+                for conf, correct, rec_bucket in self._recent:
+                    if rec_bucket != bucket:
+                        continue
+                    if conf * 100.0 >= threshold:
+                        total += 1
+                        if correct:
+                            wins += 1
+                winrate_pct = (wins / total * 100.0) if total > 0 else 0.0
+                rows.append(
+                    {
+                        "bucket": bucket,
+                        "threshold": threshold,
+                        "wins": wins,
+                        "total": total,
+                        "winrate_pct": winrate_pct,
+                    }
+                )
         return rows
 
 
@@ -827,10 +994,17 @@ class SymbolicPatternTracker:
             return "High in Losses"
         return "Random/No correlation"
 
-    def record_prediction(self, minute: datetime, token: str) -> None:
+    def observe_token(self, token: str) -> None:
         self._rolling_tokens.append(token)
+
+    def snapshot_prediction(self, minute: datetime) -> None:
         if len(self._rolling_tokens) > 0:
             self._snapshot_by_minute[_minute_floor(minute).isoformat()] = list(self._rolling_tokens)
+
+    def record_prediction(self, minute: datetime, token: str) -> None:
+        # Backward-compatible helper: observe token + snapshot prediction context.
+        self.observe_token(token)
+        self.snapshot_prediction(minute)
 
     def bootstrap_status(self) -> dict[str, int]:
         collected = len(self._rolling_tokens)
@@ -1000,6 +1174,27 @@ class SymbolicPatternTracker:
         rows.sort(key=lambda r: (int(r["total"]), abs(float(r["winrate_pct"]) - 50.0)), reverse=True)
         return rows[:limit]
 
+    def position_winrate_rows(self, limit: int = 25) -> list[dict[str, object]]:
+        by_position: dict[int, tuple[int, int]] = {}
+        for (position, _feature, _label), (wins, total) in self._position_stats.items():
+            agg_wins, agg_total = by_position.get(position, (0, 0))
+            by_position[position] = (agg_wins + int(wins), agg_total + int(total))
+
+        rows: list[dict[str, object]] = []
+        for position in sorted(by_position.keys()):
+            wins, total = by_position[position]
+            winrate_pct = (wins / total * 100.0) if total else 0.0
+            rows.append(
+                {
+                    "position": int(position),
+                    "wins": int(wins),
+                    "total": int(total),
+                    "winrate_pct": float(winrate_pct),
+                    "commonality": self._commonality_from_winrate(winrate_pct),
+                }
+            )
+        return rows[: max(1, int(limit))]
+
     def gradient_rows(self, limit: int = 40) -> list[dict[str, object]]:
         rows: list[dict[str, object]] = []
         total_wins = max(1, self._win_sequences)
@@ -1121,6 +1316,12 @@ class OBLMEngine:
         fuzzy_bias_weight: float = 0.25,
         fuzzy_min_support_sequences: int = 3,
         warmup_candles: int = 10080,
+        enable_no_trade_gate: bool = False,
+        no_trade_uncertainty_threshold: float = 0.72,
+        trading_session_enabled: bool = False,
+        trading_session_weekdays_only: bool = True,
+        trading_session_start_hour_utc: int = 9,
+        trading_session_end_hour_utc: int = 19,
     ):
         self._quantizer = quantizer or AdaptiveQuantizer(rolling_window=10080)
         self._model = model or IncrementalOBLMModel()
@@ -1130,7 +1331,16 @@ class OBLMEngine:
         self._holding_minutes = max(1, int(holding_minutes))
         self._fuzzy_bias_weight = min(max(float(fuzzy_bias_weight), 0.0), 1.0)
         self._fuzzy_min_support_sequences = max(1, int(fuzzy_min_support_sequences))
-        self._warmup_candles = max(1, int(warmup_candles))
+        self._warmup_candles = max(0, int(warmup_candles))
+        self._enable_no_trade_gate = bool(enable_no_trade_gate)
+        self._no_trade_uncertainty_threshold = min(
+            max(float(no_trade_uncertainty_threshold), 0.0),
+            1.0,
+        )
+        self._trading_session_enabled = bool(trading_session_enabled)
+        self._trading_session_weekdays_only = bool(trading_session_weekdays_only)
+        self._trading_session_start_hour_utc = int(trading_session_start_hour_utc) % 24
+        self._trading_session_end_hour_utc = int(trading_session_end_hour_utc) % 24
         self._candles_seen = 0
 
         self._pending: deque[PendingPrediction] = deque()
@@ -1139,6 +1349,64 @@ class OBLMEngine:
         self._last_settlements: list[dict[str, object]] = []
         self._last_fuzzy_bias: dict[str, object] = {}
         self._last_model_input: str = ""
+        self._last_uncertainty: float = 0.0
+        self._last_action: str = "TRADE"
+        self._last_reason: str = "ok"
+        self._last_warmup_remaining: int = max(0, self._warmup_candles)
+
+    def _compute_uncertainty(
+        self,
+        p_bull: float,
+        fuzzy_bias: dict[str, object],
+    ) -> dict[str, object]:
+        margin = abs(float(p_bull) - 0.5)
+        confidence_uncertainty = 1.0 - min(margin / 0.25, 1.0)
+
+        fuzzy_score = float(fuzzy_bias.get("score", 0.0))
+        fuzzy_uncertainty = 1.0 - min(abs(fuzzy_score) / 0.12, 1.0)
+
+        support_sum = int(fuzzy_bias.get("support_sum", 0))
+        support_uncertainty = 1.0 - min(float(support_sum) / 200.0, 1.0)
+
+        matched = int(fuzzy_bias.get("matched", 0))
+        matched_uncertainty = 1.0 - min(float(matched) / 20.0, 1.0)
+
+        has_pos = bool(fuzzy_bias.get("top_positive"))
+        has_neg = bool(fuzzy_bias.get("top_negative"))
+        conflict_uncertainty = 1.0 if (has_pos and has_neg) else 0.0
+
+        score = (
+            0.35 * confidence_uncertainty
+            + 0.35 * fuzzy_uncertainty
+            + 0.15 * support_uncertainty
+            + 0.05 * matched_uncertainty
+            + 0.10 * conflict_uncertainty
+        )
+        score = min(max(float(score), 0.0), 1.0)
+
+        reasons: list[str] = []
+        if confidence_uncertainty >= 0.7:
+            reasons.append("low_model_margin")
+        if fuzzy_uncertainty >= 0.7:
+            reasons.append("fuzzy_near_neutral")
+        if support_uncertainty >= 0.6:
+            reasons.append("low_fuzzy_support")
+        if conflict_uncertainty >= 1.0:
+            reasons.append("mixed_fragment_signals")
+        if not reasons:
+            reasons.append("stable")
+
+        return {
+            "score": score,
+            "reasons": reasons,
+            "components": {
+                "confidence_uncertainty": confidence_uncertainty,
+                "fuzzy_uncertainty": fuzzy_uncertainty,
+                "support_uncertainty": support_uncertainty,
+                "matched_uncertainty": matched_uncertainty,
+                "conflict_uncertainty": conflict_uncertainty,
+            },
+        }
 
     def _new_pending(
         self,
@@ -1212,11 +1480,16 @@ class OBLMEngine:
     def process_market_state(self, state: MarketState) -> PredictionOutput:
         minute = _minute_floor(state.timestamp)
         self._candles_seen += 1
+        warmup_remaining = max(0, self._warmup_candles - self._candles_seen)
+        self._last_warmup_remaining = warmup_remaining
 
         indicator_context = self._indicator_state.update(state.candle)
         self._last_indicator_context = dict(indicator_context)
         token = self._quantizer.to_token(state=state, indicator_context=indicator_context)
         self._last_token = token
+        # Always advance symbolic context window, even during warmup/NO_TRADE.
+        # This prevents bootstrap counters from appearing frozen while waiting to trade.
+        self._pattern_tracker.observe_token(token)
         model_input = _build_syllable_model_input(token, include_interactions=True)
         self._last_model_input = model_input
 
@@ -1228,24 +1501,51 @@ class OBLMEngine:
         self._last_fuzzy_bias = dict(fuzzy_bias)
         fuzzy_score = float(fuzzy_bias.get("score", 0.0))
         p_bull = min(max(base_p_bull + (self._fuzzy_bias_weight * fuzzy_score), 0.0), 1.0)
+        uncertainty_meta = self._compute_uncertainty(p_bull=p_bull, fuzzy_bias=fuzzy_bias)
+        uncertainty = float(uncertainty_meta["score"])
         predicted_direction = "BULL" if p_bull >= 0.5 else "BEAR"
         confidence = p_bull if predicted_direction == "BULL" else 1.0 - p_bull
+        action = "TRADE"
+        reason = "ok"
+        if warmup_remaining > 0:
+            action = "NO_TRADE"
+            reason = f"warmup_countdown:{warmup_remaining}"
+        elif not _is_trading_session_open(
+            minute=minute,
+            enabled=self._trading_session_enabled,
+            weekdays_only=self._trading_session_weekdays_only,
+            start_hour_utc=self._trading_session_start_hour_utc,
+            end_hour_utc=self._trading_session_end_hour_utc,
+        ):
+            action = "NO_TRADE"
+            reason = "outside_trading_session"
+        elif self._enable_no_trade_gate and uncertainty >= self._no_trade_uncertainty_threshold:
+            action = "NO_TRADE"
+            reason = "|".join(str(x) for x in uncertainty_meta.get("reasons", []))
+
+        self._last_uncertainty = uncertainty
+        self._last_action = action
+        self._last_reason = reason
         prediction = PredictionOutput(
             direction=predicted_direction,
             probability=float(confidence),
             timestamp=_minute_floor(minute).isoformat(),
+            action=action,
+            uncertainty=uncertainty,
+            reason=reason,
         )
 
-        pending = self._new_pending(
-            minute=minute,
-            token=token,
-            model_input=model_input,
-            close_price=state.candle.close,
-            predicted_direction=predicted_direction,
-            bull_probability=p_bull,
-        )
-        self._pending.append(pending)
-        self._pattern_tracker.record_prediction(minute=minute, token=token)
+        if action == "TRADE":
+            pending = self._new_pending(
+                minute=minute,
+                token=token,
+                model_input=model_input,
+                close_price=state.candle.close,
+                predicted_direction=predicted_direction,
+                bull_probability=p_bull,
+            )
+            self._pending.append(pending)
+            self._pattern_tracker.snapshot_prediction(minute=minute)
 
         self._last_settlements = self._settle_after_holding(
             current_close=state.candle.close,
@@ -1261,6 +1561,9 @@ class OBLMEngine:
             self._pattern_tracker.winloss_rows(limit=40),
             self._pattern_tracker.gradient_rows(limit=40),
         )
+
+    def symbolic_position_rows(self) -> list[dict[str, object]]:
+        return self._pattern_tracker.position_winrate_rows(limit=25)
 
     def symbolic_bootstrap_status(self) -> dict[str, int]:
         return self._pattern_tracker.bootstrap_status()
@@ -1290,8 +1593,24 @@ class OBLMEngine:
         return dict(self._last_fuzzy_bias)
 
     @property
+    def last_uncertainty(self) -> float:
+        return float(self._last_uncertainty)
+
+    @property
+    def last_action(self) -> str:
+        return str(self._last_action)
+
+    @property
+    def last_reason(self) -> str:
+        return str(self._last_reason)
+
+    @property
     def last_model_input(self) -> str:
         return self._last_model_input
+
+    @property
+    def warmup_remaining(self) -> int:
+        return int(self._last_warmup_remaining)
 
     def dump_state(self) -> dict:
         return {
@@ -1305,6 +1624,12 @@ class OBLMEngine:
             "fuzzy_bias_weight": self._fuzzy_bias_weight,
             "fuzzy_min_support_sequences": self._fuzzy_min_support_sequences,
             "warmup_candles": self._warmup_candles,
+            "enable_no_trade_gate": self._enable_no_trade_gate,
+            "no_trade_uncertainty_threshold": self._no_trade_uncertainty_threshold,
+            "trading_session_enabled": self._trading_session_enabled,
+            "trading_session_weekdays_only": self._trading_session_weekdays_only,
+            "trading_session_start_hour_utc": self._trading_session_start_hour_utc,
+            "trading_session_end_hour_utc": self._trading_session_end_hour_utc,
             "candles_seen": self._candles_seen,
             "pending": [
                 {
@@ -1349,6 +1674,12 @@ class OBLMEngine:
             fuzzy_bias_weight=float(state.get("fuzzy_bias_weight", 0.25)),
             fuzzy_min_support_sequences=int(state.get("fuzzy_min_support_sequences", 3)),
             warmup_candles=int(state.get("warmup_candles", 10080)),
+            enable_no_trade_gate=bool(state.get("enable_no_trade_gate", False)),
+            no_trade_uncertainty_threshold=float(state.get("no_trade_uncertainty_threshold", 0.72)),
+            trading_session_enabled=bool(state.get("trading_session_enabled", False)),
+            trading_session_weekdays_only=bool(state.get("trading_session_weekdays_only", True)),
+            trading_session_start_hour_utc=int(state.get("trading_session_start_hour_utc", 9)),
+            trading_session_end_hour_utc=int(state.get("trading_session_end_hour_utc", 19)),
         )
         engine._candles_seen = int(state.get("candles_seen", 0))
 
@@ -1373,8 +1704,19 @@ def _log_confidence_winrate_snapshot(
     source: str,
     confidence_log_path: str,
     confidence_log_max_lines: int,
+    min_total_for_log: int = 1
 ) -> None:
-    for row in tracker.summary_rows():
+    threshold_rows = tracker.summary_rows()
+    vol2h_rows = tracker.summary_rows_vol2h_by_threshold()
+
+    min_total = max(1, int(min_total_for_log))
+    logged_any = False
+    max_total_seen = 0
+    for row in threshold_rows:
+        max_total_seen = max(max_total_seen, int(row["total"]))
+    for row in threshold_rows:
+        if int(row["total"]) < min_total:
+            continue
         confidence_logger.info(
             "WINRATE minute=%s source=%s confidence_gt=%d wins=%d total=%d winrate=%.2f%%",
             minute,
@@ -1383,6 +1725,31 @@ def _log_confidence_winrate_snapshot(
             int(row["wins"]),
             int(row["total"]),
             float(row["winrate_pct"]),
+        )
+        logged_any = True
+    for row in vol2h_rows:
+        if int(row["total"]) < min_total:
+            continue
+        confidence_logger.info(
+            "WINRATE_VOL2H_CONF minute=%s source=%s bucket=%s confidence_gt=%d wins=%d total=%d winrate=%.2f%%",
+            minute,
+            source,
+            str(row["bucket"]),
+            int(row["threshold"]),
+            int(row["wins"]),
+            int(row["total"]),
+            float(row["winrate_pct"]),
+        )
+        logged_any = True
+    if not logged_any:
+        left = max(0, int(min_total) - int(max_total_seen))
+        confidence_logger.info(
+            "WINRATE_BOOTSTRAP minute=%s source=%s min_total=%d left=%d max_total_seen=%d status=INSUFFICIENT_DATA",
+            minute,
+            source,
+            min_total,
+            left,
+            max_total_seen,
         )
     _trim_log_to_last_lines(
         log_path=confidence_log_path,
@@ -1395,22 +1762,37 @@ def _log_symbolic_summary_snapshot(
     minute: str,
     winloss_rows: list[dict[str, object]],
     gradient_rows: list[dict[str, object]],
+    position_rows: list[dict[str, object]],
     bootstrap_status: dict[str, int],
     summary_log_path: str,
     summary_log_max_lines: int,
+    min_total_for_log: int = 1,
+    warmup_remaining: int = 0
 ) -> None:
+
+    min_total = max(1, int(min_total_for_log))
+    filtered_winloss_rows = [row for row in winloss_rows if int(row["total"]) >= min_total]
+    filtered_position_rows = [row for row in position_rows if int(row["total"]) >= min_total]
+    filtered_gradient_rows = [
+        row
+        for row in gradient_rows
+        if (int(row.get("fragment_wins", 0)) + int(row.get("fragment_losses", 0))) >= min_total
+    ]
+
     summary_logger.info("SYMBOLIC_SUMMARY minute=%s", minute)
     summary_logger.info("| Position | Feature | Label | Win Rate | Commonality |")
     summary_logger.info("| :--- | :--- | :--- | :--- | :--- |")
-    if not winloss_rows:
+    if not filtered_winloss_rows:
         summary_logger.info(
-            "| - | - | - | - | Waiting for settled 25-candle contexts (left=%d, collected=%d/%d, snapshots_waiting=%d) |",
+            "| - | - | - | - | BOOTSTRAP: insufficient data (min_total=%d, left=%d, collected=%d/%d, snapshots_waiting=%d, warmup_left=%d) |",
+            min_total,
             int(bootstrap_status.get("remaining", 0)),
             int(bootstrap_status.get("collected", 0)),
             int(bootstrap_status.get("needed", 25)),
             int(bootstrap_status.get("snapshots_waiting_settle", 0)),
+            int(warmup_remaining),
         )
-    for row in winloss_rows[:8]:
+    for row in filtered_winloss_rows[:8]:
         position_label = _format_position_label(int(row["position"]), sequence_len=25)
         feature = str(row["feature"])
         label = str(row["label"])
@@ -1425,9 +1807,25 @@ def _log_symbolic_summary_snapshot(
             commonality,
         )
 
-    if not gradient_rows:
-        summary_logger.info("NO_GRADIENT_ROWS yet")
-    for row in gradient_rows[:8]:
+    summary_logger.info("WINRATE_BY_POSITION")
+    summary_logger.info("| Position | Wins | Total | Win Rate | Commonality |")
+    summary_logger.info("| :--- | :--- | :--- | :--- | :--- |")
+    if not filtered_position_rows:
+        summary_logger.info("| - | - | - | - | No settled position stats yet (or below min support) |")
+    for row in filtered_position_rows[:8]:
+        position_label = _format_position_label(int(row["position"]), sequence_len=25)
+        summary_logger.info(
+            "| %s | %d | %d | %.2f%% | %s |",
+            position_label,
+            int(row["wins"]),
+            int(row["total"]),
+            float(row["winrate_pct"]),
+            str(row["commonality"]),
+        )
+
+    if not filtered_gradient_rows:
+        summary_logger.info("NO_GRADIENT_ROWS yet (or below min support)")
+    for row in filtered_gradient_rows[:8]:
         fragment = str(row["fragment"])
         win_freq = float(row["win_freq"])
         loss_freq = float(row["loss_freq"])
@@ -1452,10 +1850,16 @@ async def run_oblm_training(
     model_path: str = "data/oblm/model.pkl",
     save_interval_minutes: int = 1,
     rolling_window: int = 10080,
-    warmup_candles: int = 10080,
+    warmup_candles: int = 30,
     holding_minutes: int = 5,
     fuzzy_bias_weight: float = 0.25,
     fuzzy_min_support_sequences: int = 3,
+    enable_no_trade_gate: bool = False,
+    no_trade_uncertainty_threshold: float = 0.72,
+    trading_session_enabled: bool = False,
+    trading_session_weekdays_only: bool = True,
+    trading_session_start_hour_utc: int = 9,
+    trading_session_end_hour_utc: int = 19,
     decision_log_path: str = "logs/oblm/decisions.log",
     decision_log_max_bytes: int = 2_000_000,
     decision_log_backup_count: int = 5,
@@ -1468,6 +1872,9 @@ async def run_oblm_training(
     summary_log_max_bytes: int = 2_000_000,
     summary_log_backup_count: int = 5,
     summary_log_max_lines: int = 200,
+    min_total_for_log: int = 100,
+    prefill_candles_path: str = "",
+    prefill_limit: int = 10080,
 ) -> None:
     decision_logger = _configure_decision_log_file(
         decision_log_path=decision_log_path,
@@ -1496,6 +1903,17 @@ async def run_oblm_training(
             engine._holding_minutes = max(1, int(holding_minutes))
             engine._fuzzy_bias_weight = min(max(float(fuzzy_bias_weight), 0.0), 1.0)
             engine._fuzzy_min_support_sequences = max(1, int(fuzzy_min_support_sequences))
+            engine._warmup_candles = max(0, int(warmup_candles))
+            engine._enable_no_trade_gate = bool(enable_no_trade_gate)
+            engine._no_trade_uncertainty_threshold = min(
+                max(float(no_trade_uncertainty_threshold), 0.0),
+                1.0,
+            )
+            engine._trading_session_enabled = bool(trading_session_enabled)
+            engine._trading_session_weekdays_only = bool(trading_session_weekdays_only)
+            engine._trading_session_start_hour_utc = int(trading_session_start_hour_utc) % 24
+            engine._trading_session_end_hour_utc = int(trading_session_end_hour_utc) % 24
+            engine._last_warmup_remaining = max(0, engine._warmup_candles - int(engine._candles_seen))
             logger.info("Loaded existing OBLM model from %s", checkpoint)
         except Exception as exc:
             logger.warning("Failed to load checkpoint %s (%s). Starting fresh.", checkpoint, exc)
@@ -1506,6 +1924,12 @@ async def run_oblm_training(
                 fuzzy_bias_weight=fuzzy_bias_weight,
                 fuzzy_min_support_sequences=fuzzy_min_support_sequences,
                 warmup_candles=warmup_candles,
+                enable_no_trade_gate=enable_no_trade_gate,
+                no_trade_uncertainty_threshold=no_trade_uncertainty_threshold,
+                trading_session_enabled=trading_session_enabled,
+                trading_session_weekdays_only=trading_session_weekdays_only,
+                trading_session_start_hour_utc=trading_session_start_hour_utc,
+                trading_session_end_hour_utc=trading_session_end_hour_utc,
             )
     else:
         engine = OBLMEngine(
@@ -1515,11 +1939,88 @@ async def run_oblm_training(
             fuzzy_bias_weight=fuzzy_bias_weight,
             fuzzy_min_support_sequences=fuzzy_min_support_sequences,
             warmup_candles=warmup_candles,
+            enable_no_trade_gate=enable_no_trade_gate,
+            no_trade_uncertainty_threshold=no_trade_uncertainty_threshold,
+            trading_session_enabled=trading_session_enabled,
+            trading_session_weekdays_only=trading_session_weekdays_only,
+            trading_session_start_hour_utc=trading_session_start_hour_utc,
+            trading_session_end_hour_utc=trading_session_end_hour_utc,
         )
+
+    if prefill_candles_path:
+        try:
+            prefill = _load_prefill_candles(path=prefill_candles_path, limit=prefill_limit)
+            for candle in prefill:
+                synthetic_price = float(candle.close)
+                synthetic_state = MarketState(
+                    timestamp=_minute_floor(candle.timestamp),
+                    l2=L2Snapshot(
+                        timestamp=_minute_floor(candle.timestamp),
+                        bids=[(synthetic_price * 0.9995, 1.0), (synthetic_price * 0.9990, 1.0)],
+                        asks=[(synthetic_price * 1.0005, 1.0), (synthetic_price * 1.0010, 1.0)],
+                    ),
+                    candle=candle,
+                )
+                # Warmup-only prefill: build indicator/quantization context and symbolic rolling window
+                # without generating pending predictions or learning outcomes from synthetic history.
+                engine._candles_seen += 1
+                indicator_context = engine._indicator_state.update(candle)
+                token = engine._quantizer.to_token(state=synthetic_state, indicator_context=indicator_context)
+                engine._last_indicator_context = dict(indicator_context)
+                engine._last_token = token
+                engine._last_model_input = _build_syllable_model_input(token, include_interactions=True)
+                engine._pattern_tracker.observe_token(token)
+
+            if prefill:
+                baseline_missing = max(0, int(rolling_window) - len(prefill))
+                logger.info(
+                    "Applied prefill warmup from %s: candles=%d first=%s last=%s baseline_missing=%d",
+                    prefill_candles_path,
+                    len(prefill),
+                    _minute_floor(prefill[0].timestamp).isoformat(),
+                    _minute_floor(prefill[-1].timestamp).isoformat(),
+                    baseline_missing,
+                )
+            else:
+                logger.warning("Prefill file loaded but produced 0 candles: %s", prefill_candles_path)
+        except Exception as exc:
+            logger.warning("Failed prefill from %s (%s). Continuing without prefill.", prefill_candles_path, exc)
+
+    startup_minute = _minute_floor(datetime.now(timezone.utc)).isoformat()
+    decision_logger.info(
+        "STARTUP minute=%s symbol=%s warmup_candles=%d warmup_left=%d rolling_window=%d prefill_path=%s",
+        startup_minute,
+        symbol,
+        int(warmup_candles),
+        int(engine.warmup_remaining),
+        int(rolling_window),
+        prefill_candles_path or "NONE",
+    )
+    decision_logger.info(
+        "WAITING_MARKET_DATA minute=%s pending=%d token=%s",
+        startup_minute,
+        engine.pending_count,
+        engine.last_token or "NA",
+    )
+    _trim_log_to_last_lines(log_path=decision_log_path, max_lines=decision_log_max_lines)
+
+    startup_winloss_rows, startup_gradient_rows = engine.symbolic_summary_rows()
+    _log_symbolic_summary_snapshot(
+        summary_logger=summary_logger,
+        minute=startup_minute,
+        winloss_rows=startup_winloss_rows,
+        gradient_rows=startup_gradient_rows,
+        position_rows=engine.symbolic_position_rows(),
+        bootstrap_status=engine.symbolic_bootstrap_status(),
+        summary_log_path=summary_log_path,
+        summary_log_max_lines=summary_log_max_lines,
+        min_total_for_log=min_total_for_log,
+        warmup_remaining=engine.warmup_remaining,
+    )
 
     async def on_market_state(state: MarketState) -> None:
         output = engine.process_market_state(state)
-        move = "UP" if output.direction == "BULL" else "DOWN"
+        move = "HOLD" if output.action == "NO_TRADE" else ("UP" if output.direction == "BULL" else "DOWN")
         probability_pct = output.probability * 100.0
         indicator_context = engine.last_indicator_context
         avg_volume_1m_7d = indicator_context.get("avg_volume_1m_7d")
@@ -1534,10 +2035,14 @@ async def run_oblm_training(
         )
 
         decision_logger.info(
-            "DECISION minute=%s move=%s probability=%.2f%% token=%s model_input=%s warmed_up=%s",
+            "DECISION minute=%s move=%s action=%s probability=%.2f%% uncertainty=%.3f reason=%s warmup_left=%d token=%s model_input=%s warmed_up=%s",
             output.timestamp,
             move,
+            output.action,
             probability_pct,
+            float(output.uncertainty),
+            output.reason,
+            int(engine.warmup_remaining),
             engine.last_token or "NA",
             " ".join((engine.last_model_input or "NA").split(" ")[:8]),
             engine.warmed_up,
@@ -1573,6 +2078,7 @@ async def run_oblm_training(
             confidence_tracker.update(
                 confidence=float(settled["confidence"]),
                 correct=bool(settled["correct"]),
+                vol2h_bucket=str(settled.get("vol2h_bucket", "NA")),
             )
             decision_logger.info(
                 "SETTLE pred_minute=%s predicted=%s realized=%s correct=%s confidence=%.3f exit=%.4f reason=%s age_minutes=%d sequence_mode=%s sequence_len=%d",
@@ -1630,15 +2136,19 @@ async def run_oblm_training(
 
         if not has_new_settlement:
             latest_winloss_rows, latest_gradient_rows = engine.symbolic_summary_rows()
+        latest_position_rows = engine.symbolic_position_rows()
 
         _log_symbolic_summary_snapshot(
             summary_logger=summary_logger,
             minute=output.timestamp,
             winloss_rows=latest_winloss_rows,
             gradient_rows=latest_gradient_rows,
+            position_rows=latest_position_rows,
             bootstrap_status=engine.symbolic_bootstrap_status(),
             summary_log_path=summary_log_path,
             summary_log_max_lines=summary_log_max_lines,
+            min_total_for_log=min_total_for_log,
+            warmup_remaining=engine.warmup_remaining,
         )
 
         if has_new_settlement:
@@ -1649,6 +2159,7 @@ async def run_oblm_training(
                 source="settlement",
                 confidence_log_path=confidence_log_path,
                 confidence_log_max_lines=confidence_log_max_lines,
+                min_total_for_log=min_total_for_log,
             )
 
         calibration = engine.calibration_summary()
@@ -1673,6 +2184,29 @@ async def run_oblm_training(
             await asyncio.sleep(max(1, save_interval_minutes) * 60)
             engine.save_to_file(checkpoint)
             now_minute = _minute_floor(datetime.now(timezone.utc)).isoformat()
+            decision_logger.info(
+                "HEARTBEAT minute=%s pending=%d warmup_left=%d warmed_up=%s token=%s",
+                now_minute,
+                engine.pending_count,
+                int(engine.warmup_remaining),
+                engine.warmed_up,
+                engine.last_token or "NA",
+            )
+            _trim_log_to_last_lines(log_path=decision_log_path, max_lines=decision_log_max_lines)
+
+            hb_winloss_rows, hb_gradient_rows = engine.symbolic_summary_rows()
+            _log_symbolic_summary_snapshot(
+                summary_logger=summary_logger,
+                minute=now_minute,
+                winloss_rows=hb_winloss_rows,
+                gradient_rows=hb_gradient_rows,
+                position_rows=engine.symbolic_position_rows(),
+                bootstrap_status=engine.symbolic_bootstrap_status(),
+                summary_log_path=summary_log_path,
+                summary_log_max_lines=summary_log_max_lines,
+                min_total_for_log=min_total_for_log,
+                warmup_remaining=engine.warmup_remaining,
+            )
             _log_confidence_winrate_snapshot(
                 confidence_logger=confidence_logger,
                 tracker=confidence_tracker,
@@ -1680,8 +2214,8 @@ async def run_oblm_training(
                 source="heartbeat",
                 confidence_log_path=confidence_log_path,
                 confidence_log_max_lines=confidence_log_max_lines,
+                min_total_for_log=min_total_for_log,
             )
-            _trim_log_to_last_lines(log_path=summary_log_path, max_lines=summary_log_max_lines)
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -1710,6 +2244,7 @@ async def run_oblm_training(
             source="shutdown",
             confidence_log_path=confidence_log_path,
             confidence_log_max_lines=confidence_log_max_lines,
+            min_total_for_log=min_total_for_log,
         )
 
 
@@ -1819,6 +2354,14 @@ class BinanceMarketDataPipeline:
 
 
 def _parse_oblm_args() -> argparse.Namespace:
+    def _parse_bool(value: str) -> bool:
+        text = str(value).strip().lower()
+        if text in {"1", "true", "t", "yes", "y", "on"}:
+            return True
+        if text in {"0", "false", "f", "no", "n", "off"}:
+            return False
+        raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
+
     parser = argparse.ArgumentParser(description="Run OBLM v2 symbolic strategy loop")
     parser.add_argument("--symbol", default="btcusdt", help="Binance symbol")
     parser.add_argument("--model-path", default="data/oblm/model.pkl", help="Path to OBLM checkpoint file")
@@ -1832,7 +2375,7 @@ def _parse_oblm_args() -> argparse.Namespace:
     parser.add_argument(
         "--warmup-candles",
         type=int,
-        default=10080,
+        default=30,
         help="Warmup candles before full-confidence operation",
     )
     parser.add_argument(
@@ -1853,6 +2396,41 @@ def _parse_oblm_args() -> argparse.Namespace:
         default=3,
         help="Minimum settled sequence support for fragment to be used in fuzzy bias",
     )
+    parser.add_argument(
+        "--enable-no-trade-gate",
+        action="store_true",
+        help="Enable NO_TRADE action when uncertainty is high",
+    )
+    parser.add_argument(
+        "--no-trade-uncertainty-threshold",
+        type=float,
+        default=0.72,
+        help="Uncertainty threshold above which action becomes NO_TRADE",
+    )
+    parser.add_argument(
+        "--trading-session-enabled",
+        type=_parse_bool,
+        default=False,
+        help="Enable trading-session gate (false allows 24/7 trading)",
+    )
+    parser.add_argument(
+        "--trading-session-weekdays-only",
+        type=_parse_bool,
+        default=True,
+        help="When session gate is enabled, restrict trades to Mon-Fri",
+    )
+    parser.add_argument(
+        "--trading-session-start-hour-utc",
+        type=int,
+        default=9,
+        help="When session gate is enabled, inclusive UTC start hour (0-23)",
+    )
+    parser.add_argument(
+        "--trading-session-end-hour-utc",
+        type=int,
+        default=19,
+        help="When session gate is enabled, exclusive UTC end hour (0-23)",
+    )
     parser.add_argument("--decision-log-path", default="logs/oblm/decisions.log", help="Decision log path")
     parser.add_argument("--decision-log-max-bytes", type=int, default=2_000_000, help="Decision log max bytes")
     parser.add_argument("--decision-log-backup-count", type=int, default=5, help="Decision log backups")
@@ -1865,6 +2443,23 @@ def _parse_oblm_args() -> argparse.Namespace:
     parser.add_argument("--summary-log-max-bytes", type=int, default=2_000_000, help="Symbolic summary log max bytes")
     parser.add_argument("--summary-log-backup-count", type=int, default=5, help="Symbolic summary log backups")
     parser.add_argument("--summary-log-max-lines", type=int, default=200, help="Symbolic summary log tail lines")
+    parser.add_argument(
+        "--min-total-for-log",
+        type=int,
+        default=100,
+        help="Minimum support total required before logging detailed rows",
+    )
+    parser.add_argument(
+        "--prefill-candles-path",
+        default="",
+        help="Path to Freqtrade 1m candle export (JSON/CSV) used for startup warmup",
+    )
+    parser.add_argument(
+        "--prefill-limit",
+        type=int,
+        default=10080,
+        help="Maximum number of candles loaded from prefill source",
+    )
     return parser.parse_args()
 
 
@@ -1892,6 +2487,12 @@ def main() -> None:
             holding_minutes=args.holding_minutes,
             fuzzy_bias_weight=args.fuzzy_bias_weight,
             fuzzy_min_support_sequences=args.fuzzy_min_support_sequences,
+            enable_no_trade_gate=args.enable_no_trade_gate,
+            no_trade_uncertainty_threshold=args.no_trade_uncertainty_threshold,
+            trading_session_enabled=args.trading_session_enabled,
+            trading_session_weekdays_only=args.trading_session_weekdays_only,
+            trading_session_start_hour_utc=args.trading_session_start_hour_utc,
+            trading_session_end_hour_utc=args.trading_session_end_hour_utc,
             decision_log_path=args.decision_log_path,
             decision_log_max_bytes=args.decision_log_max_bytes,
             decision_log_backup_count=args.decision_log_backup_count,
@@ -1904,6 +2505,9 @@ def main() -> None:
             summary_log_max_bytes=args.summary_log_max_bytes,
             summary_log_backup_count=args.summary_log_backup_count,
             summary_log_max_lines=args.summary_log_max_lines,
+            min_total_for_log=args.min_total_for_log,
+            prefill_candles_path=args.prefill_candles_path,
+            prefill_limit=args.prefill_limit,
         )
     )
 
