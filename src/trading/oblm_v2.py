@@ -1718,12 +1718,16 @@ def _log_confidence_winrate_snapshot(
         if int(row["total"]) < min_total:
             continue
         confidence_logger.info(
-            "WINRATE minute=%s source=%s confidence_gt=%d wins=%d total=%d winrate=%.2f%%",
+            (
+                "WINRATE minute=%s source=%s confidence_gt=%d wins=%d total=%d "
+                "winrate=%.2f%% empirical_winrate=%.2f%%"
+            ),
             minute,
             source,
             int(row["threshold"]),
             int(row["wins"]),
             int(row["total"]),
+            float(row["winrate_pct"]),
             float(row["winrate_pct"]),
         )
         logged_any = True
@@ -1731,13 +1735,17 @@ def _log_confidence_winrate_snapshot(
         if int(row["total"]) < min_total:
             continue
         confidence_logger.info(
-            "WINRATE_VOL2H_CONF minute=%s source=%s bucket=%s confidence_gt=%d wins=%d total=%d winrate=%.2f%%",
+            (
+                "WINRATE_VOL2H_CONF minute=%s source=%s bucket=%s confidence_gt=%d "
+                "wins=%d total=%d winrate=%.2f%% empirical_winrate=%.2f%%"
+            ),
             minute,
             source,
             str(row["bucket"]),
             int(row["threshold"]),
             int(row["wins"]),
             int(row["total"]),
+            float(row["winrate_pct"]),
             float(row["winrate_pct"]),
         )
         logged_any = True

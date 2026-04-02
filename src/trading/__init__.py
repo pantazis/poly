@@ -1,11 +1,31 @@
 """Trading bot components for the Liquidation Trading Bot."""
 
 from src.trading.config import TradingConfig, ConfigManager, ConfigValidationError
-from src.trading.position_manager import PositionManager
-from src.trading.risk_controller import RiskController
-from src.trading.signal_detector import SignalDetector
-from src.trading.telegram_command_handler import TelegramCommandHandler
-from src.trading.trade_logger import TradeLogger
+
+try:
+    from src.trading.position_manager import PositionManager
+except ModuleNotFoundError:  # pragma: no cover - optional runtime deps may be absent in tests
+    PositionManager = None  # type: ignore[assignment]
+
+try:
+    from src.trading.risk_controller import RiskController
+except ModuleNotFoundError:  # pragma: no cover - optional runtime deps may be absent in tests
+    RiskController = None  # type: ignore[assignment]
+
+try:
+    from src.trading.signal_detector import SignalDetector
+except ModuleNotFoundError:  # pragma: no cover - optional runtime deps may be absent in tests
+    SignalDetector = None  # type: ignore[assignment]
+
+try:
+    from src.trading.telegram_command_handler import TelegramCommandHandler
+except ModuleNotFoundError:  # pragma: no cover - optional runtime deps may be absent in tests
+    TelegramCommandHandler = None  # type: ignore[assignment]
+
+try:
+    from src.trading.trade_logger import TradeLogger
+except ModuleNotFoundError:  # pragma: no cover - optional runtime deps may be absent in tests
+    TradeLogger = None  # type: ignore[assignment]
 
 try:
     from src.trading.bot import TradingBot

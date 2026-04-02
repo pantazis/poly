@@ -13,6 +13,7 @@ _SPEC.loader.exec_module(_OBLM)
 AdaptiveQuantizer = _OBLM.AdaptiveQuantizer
 Candle1m = _OBLM.Candle1m
 ConfidenceWinrateTracker = _OBLM.ConfidenceWinrateTracker
+_log_confidence_winrate_snapshot = _OBLM._log_confidence_winrate_snapshot
 L2Snapshot = _OBLM.L2Snapshot
 MarketState = _OBLM.MarketState
 
@@ -81,3 +82,31 @@ def test_confidence_winrate_tracker_uses_cumulative_thresholds():
     assert int(rows[10]["total"]) == 3
     assert int(rows[10]["wins"]) == 2
     assert round(float(rows[10]["winrate_pct"]), 2) == 66.67
+
+
+def test_confidence_log_uses_memory_empirical_override(tmp_path: Path):
+    tracker = ConfidenceWinrateTracker()
+    tracker.update(confidence=0.95, correct=True)
+    tracker.update(confidence=0.85, correct=False)
+
+    confidence_log_path = tmp_path / "confidence.log"
+    confidence_log_path.touch()
+
+    logger = _OBLM._configure_confidence_log_file(
+        confidence_log_path=str(confidence_log_path),
+        max_bytes=1_000_000,
+        backup_count=1,
+    )
+
+    _log_confidence_winrate_snapshot(
+        confidence_logger=logger,
+        tracker=tracker,
+        minute="2026-01-01T00:00:00+00:00",
+        source="test",
+        confidence_log_path=str(confidence_log_path),
+        confidence_log_max_lines=200,
+        empirical_winrate_pct=55.0,
+    )
+
+    content = confidence_log_path.read_text(encoding="utf-8")
+    assert "winrate=100.00% empirical_winrate=55.00%" in content or "winrate=50.00% empirical_winrate=55.00%" in content

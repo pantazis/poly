@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import json
 import logging
 import math
@@ -41,6 +42,21 @@ except ImportError:  # pragma: no cover - exercised in environments without skle
     _SKLEARN_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+def _load_oblm_memory_components() -> tuple[type, type]:
+    """Load memory layer classes without importing package-level __init__.
+
+    Using direct module loading avoids pulling optional runtime dependencies from
+    `src.trading.__init__` during lightweight/unit test imports.
+    """
+    module_path = Path(__file__).with_name("oblm_memory.py")
+    spec = importlib.util.spec_from_file_location("oblm_memory_runtime", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load memory module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.MemoryDecisionGate, module.SimilarStateMemory
 
 
 def _configure_decision_log_file(
@@ -114,6 +130,52 @@ def _configure_confidence_log_file(
     )
     confidence_logger.addHandler(file_handler)
     return confidence_logger
+
+
+def _configure_memory_log_file(
+    memory_log_path: str,
+    max_bytes: int,
+    backup_count: int,
+) -> logging.Logger:
+    """Configure rolling similar-state-memory log output."""
+    memory_logger = logging.getLogger(f"{__name__}.memory")
+    memory_logger.setLevel(logging.INFO)
+    memory_logger.propagate = False
+
+    log_path = Path(memory_log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.touch(exist_ok=True)
+    resolved = str(log_path.resolve())
+
+    for handler in memory_logger.handlers:
+        if isinstance(handler, RotatingFileHandler):
+            if Path(handler.baseFilename).resolve() == log_path.resolve():
+                return memory_logger
+
+    file_handler = RotatingFileHandler(
+        filename=resolved,
+        maxBytes=max(1024, int(max_bytes)),
+        backupCount=max(1, int(backup_count)),
+        encoding="utf-8",
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    )
+    memory_logger.addHandler(file_handler)
+    return memory_logger
+
+
+def _log_memory_event(memory_logger: logging.Logger, event: str, **fields: object) -> None:
+    payload = " ".join(
+        f"{key}={value}"
+        for key, value in fields.items()
+        if value is not None
+    )
+    if payload:
+        memory_logger.info("MEMORY event=%s %s", event, payload)
+        return
+    memory_logger.info("MEMORY event=%s", event)
 
 
 def _trim_log_to_last_lines(log_path: str, max_lines: int) -> None:
@@ -401,7 +463,44 @@ class AdaptiveQuantizer:
             "relative_volume": relative_volume,
         }
 
-    def to_token(self, state: MarketState) -> str:
+    @staticmethod
+    def _volume_regime_from_z(z_volume: float) -> str:
+        if z_volume < -0.35:
+            return "LOW"
+        if z_volume < 0.35:
+            return "MID"
+        return "HIGH"
+
+    @staticmethod
+    def _spread_regime_from_z(z_spread: float) -> str:
+        if z_spread < -0.8:
+            return "TIGHT"
+        if z_spread < 0.8:
+            return "NORM"
+        return "WIDE"
+
+    @staticmethod
+    def _depth_regime_from_z(z_depth: float) -> str:
+        if z_depth < -0.35:
+            return "LOW"
+        if z_depth < 0.35:
+            return "MID"
+        return "HIGH"
+
+    @staticmethod
+    def _market_regime(volume_regime: str, spread_regime: str) -> str:
+        if volume_regime == "HIGH" and spread_regime in {"TIGHT", "NORM"}:
+            return "TRENDING"
+        if volume_regime == "LOW" and spread_regime == "WIDE":
+            return "NOISY"
+        return "MIXED"
+
+    def encode_state(self, state: MarketState) -> tuple[str, list[float], dict[str, str]]:
+        """Encode state into token + numeric vector + coarse regimes.
+
+        This preserves token behavior and additionally exposes values for
+        empirical similar-state memory lookups.
+        """
         features = self._extract_features(state)
         candle_dir = self._candle_direction(state.candle.open, state.candle.close)
 
@@ -419,9 +518,32 @@ class AdaptiveQuantizer:
             f"CNDL_{candle_dir}"
         )
 
+        regimes = {
+            "volume": self._volume_regime_from_z(z["relative_volume"]),
+            "spread": self._spread_regime_from_z(z["spread"]),
+            "depth": self._depth_regime_from_z(z["depth"]),
+        }
+        regimes["market"] = self._market_regime(
+            volume_regime=regimes["volume"],
+            spread_regime=regimes["spread"],
+        )
+
+        vector = [
+            float(features["imbalance"]),
+            float(features["spread"]),
+            float(features["depth"]),
+            float(features["body_size"]),
+            float(features["wick_ratio"]),
+            float(features["relative_volume"]),
+        ]
+
         for name, value in features.items():
             self._stats[name].update(value)
 
+        return token, vector, regimes
+
+    def to_token(self, state: MarketState) -> str:
+        token, _, _ = self.encode_state(state)
         return token
 
     def dump_state(self) -> dict:
@@ -688,17 +810,27 @@ def _log_confidence_winrate_snapshot(
     source: str,
     confidence_log_path: str,
     confidence_log_max_lines: int,
+    empirical_winrate_pct: float | None = None,
 ) -> None:
     """Write confidence-threshold winrates to dedicated log file."""
     for row in tracker.summary_rows():
+        empirical = (
+            float(empirical_winrate_pct)
+            if empirical_winrate_pct is not None
+            else float(row["winrate_pct"])
+        )
         confidence_logger.info(
-            "WINRATE minute=%s source=%s confidence_gt=%d wins=%d total=%d winrate=%.2f%%",
+            (
+                "WINRATE minute=%s source=%s confidence_gt=%d wins=%d total=%d "
+                "winrate=%.2f%% empirical_winrate=%.2f%%"
+            ),
             minute,
             source,
             int(row["threshold"]),
             int(row["wins"]),
             int(row["total"]),
             float(row["winrate_pct"]),
+            empirical,
         )
     _trim_log_to_last_lines(
         log_path=confidence_log_path,
@@ -722,6 +854,8 @@ class OBLMEngine:
         self._horizon = timedelta(minutes=horizon_minutes)
         self._pending: deque[PendingPrediction] = deque()
         self._last_token: str | None = None
+        self._last_feature_vector: list[float] = []
+        self._last_regimes: dict[str, str] = {}
         self._last_settlements: list[dict[str, object]] = []
 
     @staticmethod
@@ -768,8 +902,10 @@ class OBLMEngine:
         minute = _minute_floor(state.timestamp)
         self._last_settlements = self._settle_matured(minute, current_close=state.candle.close)
 
-        token = self._quantizer.to_token(state)
+        token, feature_vector, regimes = self._quantizer.encode_state(state)
         self._last_token = token
+        self._last_feature_vector = list(feature_vector)
+        self._last_regimes = dict(regimes)
         p_bull = self._model.predict_bull_probability(token)
         prediction = self._model.predict(token, minute=minute)
 
@@ -795,6 +931,14 @@ class OBLMEngine:
     def pending_count(self) -> int:
         """Return number of predictions waiting for maturity."""
         return len(self._pending)
+
+    @property
+    def last_feature_vector(self) -> list[float]:
+        return list(self._last_feature_vector)
+
+    @property
+    def last_regimes(self) -> dict[str, str]:
+        return dict(self._last_regimes)
 
     @property
     def last_settlements(self) -> list[dict[str, object]]:
@@ -864,6 +1008,19 @@ async def run_oblm_training(
     confidence_log_max_bytes: int = 2_000_000,
     confidence_log_backup_count: int = 5,
     confidence_log_max_lines: int = 10,
+    memory_enabled: bool = True,
+    memory_sqlite_path: str = "data/oblm/memory.db",
+    memory_log_path: str = "logs/oblm/memory_events.log",
+    memory_log_max_bytes: int = 2_000_000,
+    memory_log_backup_count: int = 5,
+    memory_log_max_lines: int = 200,
+    memory_k_neighbors: int = 84,
+    memory_candidate_limit: int = 2000,
+    memory_max_age_days: int = 60,
+    memory_bayes_alpha: float = 10.0,
+    memory_bayes_beta: float = 10.0,
+    memory_min_samples_to_trust: int = 30,
+    memory_min_smoothed_winrate: float = 0.55,
 ) -> None:
     """Run live OBLM training loop and persist only model state.
 
@@ -883,7 +1040,42 @@ async def run_oblm_training(
         max_bytes=confidence_log_max_bytes,
         backup_count=confidence_log_backup_count,
     )
+    memory_logger = _configure_memory_log_file(
+        memory_log_path=memory_log_path,
+        max_bytes=memory_log_max_bytes,
+        backup_count=memory_log_backup_count,
+    )
     confidence_tracker = ConfidenceWinrateTracker()
+    latest_memory_empirical_pct: float | None = None
+    memory_layer = None
+    memory_gate = None
+    if memory_enabled:
+        MemoryDecisionGateCls, SimilarStateMemoryCls = _load_oblm_memory_components()
+        memory_layer = SimilarStateMemoryCls(
+            sqlite_path=memory_sqlite_path,
+            k_neighbors=memory_k_neighbors,
+            candidate_limit=memory_candidate_limit,
+            max_age_days=memory_max_age_days,
+            bayes_alpha=memory_bayes_alpha,
+            bayes_beta=memory_bayes_beta,
+        )
+        memory_gate = MemoryDecisionGateCls(
+            min_samples_to_trust=memory_min_samples_to_trust,
+            min_smoothed_winrate=memory_min_smoothed_winrate,
+            tradable_volume_regimes=("MID", "HIGH"),
+        )
+        _log_memory_event(
+            memory_logger,
+            "startup",
+            enabled=True,
+            sqlite_path=memory_sqlite_path,
+            k_neighbors=memory_k_neighbors,
+            bayes_alpha=memory_bayes_alpha,
+            bayes_beta=memory_bayes_beta,
+            min_samples_to_trust=memory_min_samples_to_trust,
+        )
+    else:
+        _log_memory_event(memory_logger, "startup", enabled=False)
     _log_lifecycle(
         decision_logger,
         "startup",
@@ -984,11 +1176,15 @@ async def run_oblm_training(
         log_path=confidence_log_path,
         max_lines=confidence_log_max_lines,
     )
+    _trim_log_to_last_lines(
+        log_path=memory_log_path,
+        max_lines=memory_log_max_lines,
+    )
 
     latest_state: MarketState | None = None
 
     async def on_market_state(state: MarketState) -> None:
-        nonlocal latest_state
+        nonlocal latest_state, latest_memory_empirical_pct
         latest_state = state
         best_bid = state.l2.bids[0][0] if state.l2.bids else float("nan")
         best_ask = state.l2.asks[0][0] if state.l2.asks else float("nan")
@@ -1001,6 +1197,76 @@ async def run_oblm_training(
             state.candle.volume,
         )
         output = engine.process_market_state(state)
+        memory_payload: dict[str, object] = {
+            "memory_winrate": 0.0,
+            "smoothed_memory_winrate": 0.5,
+            "memory_samples": 0,
+            "regime_filtered_samples": 0,
+            "match_method": "none",
+            "trade_verdict": "SKIP",
+        }
+        if memory_layer is not None and memory_gate is not None:
+            lookup = memory_layer.lookup_similar(
+                symbol=symbol,
+                token=engine.last_token or "NA",
+                feature_vector=engine.last_feature_vector,
+                predicted_direction=output.direction,
+                regimes=engine.last_regimes,
+            )
+            volume_regime = engine.last_regimes.get("volume", "MID")
+            verdict = memory_gate.evaluate(
+                model_confidence=output.probability,
+                lookup=lookup,
+                volume_regime=volume_regime,
+            )
+            memory_payload = {
+                "memory_winrate": float(lookup.memory_winrate),
+                "smoothed_memory_winrate": float(lookup.smoothed_memory_winrate),
+                "memory_samples": int(lookup.memory_samples),
+                "regime_filtered_samples": int(lookup.regime_filtered_samples),
+                "match_method": lookup.match_method,
+                "trade_verdict": verdict.verdict,
+            }
+            latest_memory_empirical_pct = float(lookup.smoothed_memory_winrate) * 100.0
+            _log_memory_event(
+                memory_logger,
+                "lookup",
+                minute=output.timestamp,
+                direction=output.direction,
+                model_confidence=f"{output.probability:.3f}",
+                memory_winrate=f"{lookup.memory_winrate:.4f}",
+                smoothed_memory_winrate=f"{lookup.smoothed_memory_winrate:.4f}",
+                memory_samples=lookup.memory_samples,
+                regime_filtered_samples=lookup.regime_filtered_samples,
+                match_method=lookup.match_method,
+                volume_regime=volume_regime,
+                verdict=verdict.verdict,
+                verdict_reason=verdict.reason,
+            )
+            memory_prediction_id = memory_layer.insert_prediction(
+                timestamp=output.timestamp,
+                symbol=symbol,
+                token=engine.last_token or "NA",
+                feature_vector=engine.last_feature_vector,
+                predicted_direction=output.direction,
+                model_confidence=output.probability,
+                regimes=engine.last_regimes,
+                reference_price=state.candle.close,
+                settlement_horizon_minutes=5,
+            )
+            _log_memory_event(
+                memory_logger,
+                "insert",
+                minute=output.timestamp,
+                prediction_id=memory_prediction_id,
+                direction=output.direction,
+                token=engine.last_token or "NA",
+                volume_regime=engine.last_regimes.get("volume", "MID"),
+                spread_regime=engine.last_regimes.get("spread", "NORM"),
+                depth_regime=engine.last_regimes.get("depth", "MID"),
+                market_regime=engine.last_regimes.get("market", "UNKNOWN"),
+                model_confidence=f"{output.probability:.3f}",
+            )
         has_new_settlement = False
         for settled in engine.last_settlements:
             has_new_settlement = True
@@ -1020,6 +1286,27 @@ async def run_oblm_training(
                 ref_close=f"{float(settled['reference_price']):.2f}",
                 eval_close=f"{float(settled['eval_price']):.2f}",
             )
+            if memory_layer is not None:
+                settled_id = memory_layer.settle_by_prediction_key(
+                    symbol=symbol,
+                    pred_minute=str(settled["pred_minute"]),
+                    predicted_direction=str(settled["predicted"]),
+                    settled_at=output.timestamp,
+                    realized_direction=str(settled["realized"]),
+                    reference_price=float(settled["reference_price"]),
+                    eval_price=float(settled["eval_price"]),
+                )
+                _log_memory_event(
+                    memory_logger,
+                    "settle",
+                    minute=output.timestamp,
+                    prediction_id=settled_id or "NA",
+                    pred_minute=settled["pred_minute"],
+                    predicted=settled["predicted"],
+                    realized=settled["realized"],
+                    correct=settled["correct"],
+                    confidence=f"{float(settled['confidence']):.3f}",
+                )
         if has_new_settlement:
             _log_confidence_winrate_snapshot(
                 confidence_logger=confidence_logger,
@@ -1028,6 +1315,7 @@ async def run_oblm_training(
                 source="settlement",
                 confidence_log_path=confidence_log_path,
                 confidence_log_max_lines=confidence_log_max_lines,
+                empirical_winrate_pct=latest_memory_empirical_pct,
             )
         move = "UP" if output.direction == "BULL" else "DOWN"
         probability_pct = output.probability * 100.0
@@ -1045,11 +1333,20 @@ async def run_oblm_training(
             engine.last_token or "NA",
         )
         decision_logger.info(
-            "DECISION minute=%s move=%s probability=%.2f%% token=%s",
+            (
+                "DECISION minute=%s move=%s probability=%.2f%% token=%s "
+                "memory_winrate=%.4f memory_smoothed=%.4f memory_samples=%d "
+                "match_method=%s verdict=%s"
+            ),
             output.timestamp,
             move,
             probability_pct,
             engine.last_token or "NA",
+            float(memory_payload["memory_winrate"]),
+            float(memory_payload["smoothed_memory_winrate"]),
+            int(memory_payload["memory_samples"]),
+            str(memory_payload["match_method"]),
+            str(memory_payload["trade_verdict"]),
         )
         calibration = engine.calibration_summary()
         model_exists = checkpoint.exists()
@@ -1066,6 +1363,10 @@ async def run_oblm_training(
         _trim_log_to_last_lines(
             log_path=decision_log_path,
             max_lines=decision_log_max_lines,
+        )
+        _trim_log_to_last_lines(
+            log_path=memory_log_path,
+            max_lines=memory_log_max_lines,
         )
 
     pipeline = BinanceMarketDataPipeline(
@@ -1120,6 +1421,11 @@ async def run_oblm_training(
                 source="heartbeat",
                 confidence_log_path=confidence_log_path,
                 confidence_log_max_lines=confidence_log_max_lines,
+                empirical_winrate_pct=latest_memory_empirical_pct,
+            )
+            _trim_log_to_last_lines(
+                log_path=memory_log_path,
+                max_lines=memory_log_max_lines,
             )
 
     loop = asyncio.get_running_loop()
@@ -1170,6 +1476,11 @@ async def run_oblm_training(
             source="shutdown",
             confidence_log_path=confidence_log_path,
             confidence_log_max_lines=confidence_log_max_lines,
+            empirical_winrate_pct=latest_memory_empirical_pct,
+        )
+        _trim_log_to_last_lines(
+            log_path=memory_log_path,
+            max_lines=memory_log_max_lines,
         )
         _log_lifecycle(decision_logger, "shutdown", stage="complete")
 
@@ -1385,6 +1696,68 @@ def _parse_oblm_args() -> argparse.Namespace:
         default=10,
         help="Keep only the latest N lines in confidence log",
     )
+    parser.add_argument(
+        "--memory-enabled",
+        action="store_true",
+        help="Enable similar-state empirical memory layer",
+    )
+    parser.add_argument(
+        "--memory-disabled",
+        action="store_true",
+        help="Disable similar-state empirical memory layer",
+    )
+    parser.add_argument(
+        "--memory-sqlite-path",
+        default="data/oblm/memory.db",
+        help="SQLite path for similar-state memory store",
+    )
+    parser.add_argument(
+        "--memory-log-path",
+        default="logs/oblm/memory_events.log",
+        help="Similar-state memory event log path",
+    )
+    parser.add_argument(
+        "--memory-k-neighbors",
+        type=int,
+        default=84,
+        help="K for vector nearest-neighbor similarity lookup",
+    )
+    parser.add_argument(
+        "--memory-candidate-limit",
+        type=int,
+        default=2000,
+        help="Candidate settled rows to scan before selecting top-k neighbors",
+    )
+    parser.add_argument(
+        "--memory-max-age-days",
+        type=int,
+        default=60,
+        help="Only use memory records newer than this age in days",
+    )
+    parser.add_argument(
+        "--memory-bayes-alpha",
+        type=float,
+        default=10.0,
+        help="Bayesian prior alpha for smoothed empirical winrate",
+    )
+    parser.add_argument(
+        "--memory-bayes-beta",
+        type=float,
+        default=10.0,
+        help="Bayesian prior beta for smoothed empirical winrate",
+    )
+    parser.add_argument(
+        "--memory-min-samples-to-trust",
+        type=int,
+        default=30,
+        help="Minimum memory sample count required by decision gate",
+    )
+    parser.add_argument(
+        "--memory-min-smoothed-winrate",
+        type=float,
+        default=0.55,
+        help="Minimum smoothed empirical winrate required by decision gate",
+    )
     return parser.parse_args()
 
 
@@ -1404,6 +1777,11 @@ def main() -> None:
 
     _setup_default_logging()
     args = _parse_oblm_args()
+    memory_enabled = True
+    if args.memory_disabled:
+        memory_enabled = False
+    elif args.memory_enabled:
+        memory_enabled = True
     asyncio.run(
         run_oblm_training(
             symbol=args.symbol,
@@ -1418,6 +1796,16 @@ def main() -> None:
             confidence_log_max_bytes=args.confidence_log_max_bytes,
             confidence_log_backup_count=args.confidence_log_backup_count,
             confidence_log_max_lines=args.confidence_log_max_lines,
+            memory_enabled=memory_enabled,
+            memory_sqlite_path=args.memory_sqlite_path,
+            memory_log_path=args.memory_log_path,
+            memory_k_neighbors=args.memory_k_neighbors,
+            memory_candidate_limit=args.memory_candidate_limit,
+            memory_max_age_days=args.memory_max_age_days,
+            memory_bayes_alpha=args.memory_bayes_alpha,
+            memory_bayes_beta=args.memory_bayes_beta,
+            memory_min_samples_to_trust=args.memory_min_samples_to_trust,
+            memory_min_smoothed_winrate=args.memory_min_smoothed_winrate,
         )
     )
 
