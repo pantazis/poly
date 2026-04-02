@@ -62,6 +62,40 @@ services:
       timeout: 10s
       retries: 3
 
+  oblm-simulator:
+    build: .
+    container_name: oblm-simulator
+    command:
+      [
+        "python",
+        "-m",
+        "src.trading.oblm_simulator",
+        "--confidence-log-path",
+        "/app/logs/oblm/confidence_winrate.log",
+        "--trades-csv-path",
+        "/app/logs/oblm/simulated_trades.csv",
+        "--min-empirical-winrate",
+        "65",
+        "--poll-seconds",
+        "10"
+      ]
+    depends_on:
+      - oblm-trainer
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    environment:
+      - TZ=UTC
+    networks:
+      - trading-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 networks:
   trading-net:
     driver: bridge
