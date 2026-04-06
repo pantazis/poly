@@ -74,8 +74,10 @@ services:
         "/app/logs/oblm/confidence_winrate.log",
         "--trades-csv-path",
         "/app/logs/oblm/simulated_trades.csv",
-        "--min-empirical-winrate",
+        "--min-confidence90-winrate",
         "65",
+        "--min-total-trades",
+        "20",
         "--poll-seconds",
         "10"
       ]

@@ -68,8 +68,8 @@ def test_pattern_tracker_produces_bullish_gradient_for_win_dominant_fragment():
     assert any(row["signal"] == "Bullish" for row in settled["gradient_rows"])
 
 
-def test_confidence_winrate_tracker_uses_rolling_100_window():
-    tracker = ConfidenceWinrateTracker(thresholds=[50], rolling_window=100)
+def test_confidence_winrate_tracker_uses_rolling_30_window():
+    tracker = ConfidenceWinrateTracker(thresholds=[50], rolling_window=30)
 
     # 120 outcomes: first 20 losses, next 100 wins.
     for i in range(120):
@@ -77,16 +77,16 @@ def test_confidence_winrate_tracker_uses_rolling_100_window():
 
     row = tracker.summary_rows()[0]
     assert row["threshold"] == 50
-    assert row["total"] == 100
-    assert row["wins"] == 100
+    assert row["total"] == 30
+    assert row["wins"] == 30
 
-    # Add 10 losses -> rolling window should now contain 90 wins + 10 losses.
+    # Add 10 losses -> rolling window should now contain 20 wins + 10 losses.
     for _ in range(10):
         tracker.update(confidence=0.9, correct=False, vol2h_bucket="MID")
 
     row2 = tracker.summary_rows()[0]
-    assert row2["total"] == 100
-    assert row2["wins"] == 90
+    assert row2["total"] == 30
+    assert row2["wins"] == 20
 
 
 def test_engine_settles_prediction_after_holding_minutes():

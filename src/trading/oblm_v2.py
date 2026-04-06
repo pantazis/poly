@@ -884,7 +884,7 @@ class CalibrationTracker:
 
 
 class ConfidenceWinrateTracker:
-    def __init__(self, thresholds: list[int] | None = None, rolling_window: int = 100):
+    def __init__(self, thresholds: list[int] | None = None, rolling_window: int = 30):
         raw = thresholds or list(range(90, 0, -10))
         cleaned = sorted({int(t) for t in raw if 0 < int(t) <= 100}, reverse=True)
         self._thresholds = cleaned if cleaned else list(range(90, 0, -10))
