@@ -53,10 +53,71 @@ def test_insert_settle_and_lookup_knn(tmp_path: Path):
         regimes={"volume": "HIGH"},
     )
 
-    assert lookup.match_method == "knn_vector"
-    assert lookup.memory_samples == 3
-    # top-3 nearest should include 2 wins + 1 loss from inserted set
-    assert round(lookup.memory_winrate, 4) == round(2 / 3, 4)
+    # Per-token exact stats are now prioritized over vector-neighbor averaging.
+    assert lookup.match_method == "token_exact"
+    assert lookup.memory_samples == 4
+    # exact-token set has 3 wins + 1 loss from inserted records
+    assert round(lookup.memory_winrate, 4) == round(3 / 4, 4)
+
+
+def test_lookup_prioritizes_token_exact_over_vector_average(tmp_path: Path):
+    memory = SimilarStateMemory(
+        sqlite_path=str(tmp_path / "memory.db"),
+        k_neighbors=3,
+    )
+    ts = datetime.now(timezone.utc).isoformat()
+
+    # Exact token history: strong winrate (2/2)
+    for _ in range(2):
+        pred_id = memory.insert_prediction(
+            timestamp=ts,
+            symbol="btcusdt",
+            token="IMB_HIGH_SPD_NORM_DPT_MID_BOD_LONG_WCK_LOW_VOL_HIGH_CNDL_BULL",
+            feature_vector=[0.1, 0.01, 10.0, 0.003, 1.5, 1.1],
+            predicted_direction="BULL",
+            model_confidence=0.8,
+            regimes={"volume": "HIGH"},
+            reference_price=70000.0,
+            settlement_horizon_minutes=5,
+        )
+        memory.settle_prediction(
+            prediction_id=pred_id,
+            settled_at=ts,
+            realized_direction="BULL",
+            eval_price=70100.0,
+        )
+
+    # Non-exact but nearby vector states with weaker outcomes.
+    for realized_direction in ["BEAR", "BEAR", "BULL"]:
+        pred_id = memory.insert_prediction(
+            timestamp=ts,
+            symbol="btcusdt",
+            token="IMB_HIGH_SPD_NORM_DPT_MID_BOD_SHORT_WCK_LOW_VOL_HIGH_CNDL_BULL",
+            feature_vector=[0.1001, 0.0101, 10.01, 0.0031, 1.51, 1.09],
+            predicted_direction="BULL",
+            model_confidence=0.8,
+            regimes={"volume": "HIGH"},
+            reference_price=70000.0,
+            settlement_horizon_minutes=5,
+        )
+        memory.settle_prediction(
+            prediction_id=pred_id,
+            settled_at=ts,
+            realized_direction=realized_direction,
+            eval_price=69900.0 if realized_direction == "BEAR" else 70100.0,
+        )
+
+    lookup = memory.lookup_similar(
+        symbol="btcusdt",
+        token="IMB_HIGH_SPD_NORM_DPT_MID_BOD_LONG_WCK_LOW_VOL_HIGH_CNDL_BULL",
+        feature_vector=[0.1, 0.01, 10.0, 0.003, 1.5, 1.1],
+        predicted_direction="BULL",
+        regimes={"volume": "HIGH"},
+    )
+
+    assert lookup.match_method == "token_exact"
+    assert lookup.memory_samples == 2
+    assert round(lookup.memory_winrate, 4) == round(2 / 2, 4)
     assert 0.0 <= lookup.smoothed_memory_winrate <= 1.0
 
 
@@ -119,10 +180,12 @@ def test_memory_decision_gate():
     verdict = gate.evaluate(
         model_confidence=0.9,
         lookup=MemoryLookupResult(
-            memory_winrate=0.75,
+            memory_winrate=0.85,
             smoothed_memory_winrate=0.68,
             memory_samples=84,
             regime_filtered_samples=120,
+            last_5_winrate=1.0,
+            last_5_samples=5,
             match_method="knn_vector",
         ),
         volume_regime="HIGH",
@@ -136,8 +199,40 @@ def test_memory_decision_gate():
             smoothed_memory_winrate=0.80,
             memory_samples=5,
             regime_filtered_samples=5,
+            last_5_winrate=1.0,
+            last_5_samples=5,
             match_method="token_exact",
         ),
         volume_regime="HIGH",
     )
     assert verdict_low_samples.verdict == "SKIP"
+
+    verdict_low_memory_winrate = gate.evaluate(
+        model_confidence=0.9,
+        lookup=MemoryLookupResult(
+            memory_winrate=0.79,
+            smoothed_memory_winrate=0.80,
+            memory_samples=50,
+            regime_filtered_samples=50,
+            last_5_winrate=1.0,
+            last_5_samples=5,
+            match_method="knn_vector",
+        ),
+        volume_regime="HIGH",
+    )
+    assert verdict_low_memory_winrate.verdict == "SKIP"
+
+    verdict_last5_not_perfect = gate.evaluate(
+        model_confidence=0.9,
+        lookup=MemoryLookupResult(
+            memory_winrate=0.90,
+            smoothed_memory_winrate=0.80,
+            memory_samples=50,
+            regime_filtered_samples=50,
+            last_5_winrate=0.80,
+            last_5_samples=5,
+            match_method="knn_vector",
+        ),
+        volume_regime="HIGH",
+    )
+    assert verdict_last5_not_perfect.verdict == "SKIP"

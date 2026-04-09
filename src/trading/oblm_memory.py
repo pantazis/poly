@@ -18,7 +18,7 @@ Minimal usage example:
         symbol="btcusdt",
         token="IMB_HIGH_SPD_NORM_DPT_MID_BOD_LONG_WCK_LOW_VOL_HIGH_CNDL_BULL",
         feature_vector=[0.2, 0.01, 14.0, 0.004, 1.8, 1.3],
-        predicted_direction="BULL",
+        predicted_direction="LONG",
         model_confidence=0.91,
         regimes={"volume": "HIGH", "spread": "NORM", "depth": "MID"},
         reference_price=70000.0,
@@ -28,7 +28,7 @@ Minimal usage example:
     memory.settle_prediction(
         prediction_id=prediction_id,
         settled_at="2026-04-01T06:35:00+00:00",
-        realized_direction="BULL",
+        realized_direction="LONG",
         eval_price=70080.0,
     )
 
@@ -36,7 +36,7 @@ Minimal usage example:
         symbol="btcusdt",
         token="IMB_HIGH_SPD_NORM_DPT_MID_BOD_LONG_WCK_LOW_VOL_HIGH_CNDL_BULL",
         feature_vector=[0.2, 0.01, 14.0, 0.004, 1.8, 1.3],
-        predicted_direction="BULL",
+        predicted_direction="LONG",
         regimes={"volume": "HIGH"},
     )
 
@@ -104,6 +104,8 @@ class MemoryLookupResult:
     smoothed_memory_winrate: float
     memory_samples: int
     regime_filtered_samples: int
+    last_5_winrate: float
+    last_5_samples: int
     match_method: str
 
 
@@ -120,10 +122,14 @@ class MemoryDecisionGate:
         self,
         min_samples_to_trust: int = 30,
         min_smoothed_winrate: float = 0.55,
+        min_memory_winrate: float = 0.80,
+        min_last_5_winrate: float = 1.0,
         tradable_volume_regimes: tuple[str, ...] = ("MID", "HIGH"),
     ):
         self._min_samples_to_trust = max(1, int(min_samples_to_trust))
         self._min_smoothed_winrate = float(min_smoothed_winrate)
+        self._min_memory_winrate = float(min_memory_winrate)
+        self._min_last_5_winrate = float(min_last_5_winrate)
         self._tradable_volume_regimes = set(tradable_volume_regimes)
 
     def evaluate(
@@ -143,6 +149,21 @@ class MemoryDecisionGate:
             return TradeVerdict(
                 "SKIP",
                 f"smoothed_memory_winrate_below_threshold={lookup.smoothed_memory_winrate:.3f}",
+            )
+        if lookup.memory_winrate < self._min_memory_winrate:
+            return TradeVerdict(
+                "SKIP",
+                f"memory_winrate_below_threshold={lookup.memory_winrate:.3f}",
+            )
+        if lookup.last_5_samples < 5:
+            return TradeVerdict(
+                "SKIP",
+                f"insufficient_last_5_samples={lookup.last_5_samples}",
+            )
+        if lookup.last_5_winrate < self._min_last_5_winrate:
+            return TradeVerdict(
+                "SKIP",
+                f"last_5_winrate_below_threshold={lookup.last_5_winrate:.3f}",
             )
         if model_confidence < 0.50:
             return TradeVerdict("SKIP", f"model_confidence_too_low={model_confidence:.3f}")
@@ -446,7 +467,7 @@ class SimilarStateMemory:
             realized_return = 0.0
         else:
             signed = (eval_price - reference_price) / reference_price
-            realized_return = signed if predicted_direction == "BULL" else -signed
+            realized_return = signed if predicted_direction == "LONG" else -signed
         self._store.settle_prediction(
             prediction_id=prediction_id,
             settled_at=_to_iso(settled_at),
@@ -472,7 +493,7 @@ class SimilarStateMemory:
             realized_return = 0.0
         else:
             signed = (eval_price - reference_price) / reference_price
-            realized_return = signed if predicted_direction == "BULL" else -signed
+            realized_return = signed if predicted_direction == "LONG" else -signed
         return self._store.settle_latest_unsettled_by_key(
             symbol=symbol,
             pred_minute=pred_minute,
@@ -499,6 +520,28 @@ class SimilarStateMemory:
         regimes: dict[str, str],
     ) -> MemoryLookupResult:
         volume_regime = regimes.get("volume", "MID")
+
+        # Per-token empirical performance is the primary signal.
+        # Use exact-token stats first (within the same symbol/direction/volume regime),
+        # and only then fall back to broader vector/token-neighbor averaging.
+        wins, total = self._store.fetch_token_exact_stats(
+            symbol=symbol,
+            token=token,
+            predicted_direction=predicted_direction,
+            volume_regime=volume_regime,
+        )
+        if total > 0:
+            memory_winrate = wins / total
+            return MemoryLookupResult(
+                memory_winrate=memory_winrate,
+                smoothed_memory_winrate=self._smoothed_winrate(wins, total),
+                memory_samples=total,
+                regime_filtered_samples=total,
+                last_5_winrate=memory_winrate,
+                last_5_samples=min(5, total),
+                match_method="token_exact",
+            )
+
         candidates = self._store.fetch_settled_candidates(
             symbol=symbol,
             predicted_direction=predicted_direction,
@@ -507,6 +550,10 @@ class SimilarStateMemory:
             limit=self._candidate_limit,
         )
         regime_samples = len(candidates)
+        last_5_rows = candidates[:5]
+        last_5_wins = sum(int(r["is_win"] or 0) for r in last_5_rows)
+        last_5_total = len(last_5_rows)
+        last_5_winrate = (last_5_wins / last_5_total) if last_5_total > 0 else 0.0
 
         if candidates:
             scored: list[tuple[float, sqlite3.Row]] = []
@@ -524,23 +571,9 @@ class SimilarStateMemory:
                 smoothed_memory_winrate=self._smoothed_winrate(wins, total),
                 memory_samples=total,
                 regime_filtered_samples=regime_samples,
+                last_5_winrate=last_5_winrate,
+                last_5_samples=last_5_total,
                 match_method="knn_vector",
-            )
-
-        wins, total = self._store.fetch_token_exact_stats(
-            symbol=symbol,
-            token=token,
-            predicted_direction=predicted_direction,
-            volume_regime=volume_regime,
-        )
-        if total > 0:
-            memory_winrate = wins / total
-            return MemoryLookupResult(
-                memory_winrate=memory_winrate,
-                smoothed_memory_winrate=self._smoothed_winrate(wins, total),
-                memory_samples=total,
-                regime_filtered_samples=total,
-                match_method="token_exact",
             )
 
         # Partial token fallback (direction + symbol across recent settled records)
@@ -575,6 +608,8 @@ class SimilarStateMemory:
                     smoothed_memory_winrate=self._smoothed_winrate(wins, total),
                     memory_samples=total,
                     regime_filtered_samples=0,
+                    last_5_winrate=last_5_winrate,
+                    last_5_samples=last_5_total,
                     match_method="token_partial",
                 )
 
@@ -583,5 +618,7 @@ class SimilarStateMemory:
             smoothed_memory_winrate=self._smoothed_winrate(0, 0),
             memory_samples=0,
             regime_filtered_samples=0,
+            last_5_winrate=0.0,
+            last_5_samples=0,
             match_method="none",
         )

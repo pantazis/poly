@@ -21,6 +21,13 @@ OBLMEngine = _OBLM_V2.OBLMEngine
 ConfidenceWinrateTracker = _OBLM_V2.ConfidenceWinrateTracker
 
 
+def _repeated_token(direction: str = "BULL") -> str:
+    return (
+        "IMB_VHIGH_SPD_NORM_DPT_MID_BOD_LONG_WCK_MID_"
+        f"VOL_HIGH_VOL2H_HIGH_RGM_HIGH_RGF_HIGH_CNDL_{direction}"
+    )
+
+
 def _market_state(ts: datetime, open_price: float, close_price: float, volume: float = 100.0) -> MarketState:
     return MarketState(
         timestamp=ts,
@@ -68,25 +75,25 @@ def test_pattern_tracker_produces_bullish_gradient_for_win_dominant_fragment():
     assert any(row["signal"] == "Bullish" for row in settled["gradient_rows"])
 
 
-def test_confidence_winrate_tracker_uses_rolling_30_window():
-    tracker = ConfidenceWinrateTracker(thresholds=[50], rolling_window=30)
+def test_confidence_winrate_tracker_uses_rolling_10_window():
+    tracker = ConfidenceWinrateTracker(thresholds=[50], rolling_window=10)
 
-    # 120 outcomes: first 20 losses, next 100 wins.
-    for i in range(120):
-        tracker.update(confidence=0.9, correct=(i >= 20), vol2h_bucket="MID")
+    # 20 outcomes: first 10 losses, next 10 wins.
+    for i in range(20):
+        tracker.update(confidence=0.9, correct=(i >= 10), vol2h_bucket="MID")
 
     row = tracker.summary_rows()[0]
     assert row["threshold"] == 50
-    assert row["total"] == 30
-    assert row["wins"] == 30
+    assert row["total"] == 10
+    assert row["wins"] == 10
 
-    # Add 10 losses -> rolling window should now contain 20 wins + 10 losses.
-    for _ in range(10):
+    # Add 4 losses -> rolling window should now contain 6 wins + 4 losses.
+    for _ in range(4):
         tracker.update(confidence=0.9, correct=False, vol2h_bucket="MID")
 
     row2 = tracker.summary_rows()[0]
-    assert row2["total"] == 30
-    assert row2["wins"] == 20
+    assert row2["total"] == 10
+    assert row2["wins"] == 6
 
 
 def test_engine_settles_prediction_after_holding_minutes():
@@ -131,3 +138,122 @@ def test_engine_blocks_trading_outside_configured_weekday_session_when_enabled()
     monday = datetime(2026, 1, 5, 10, 0, tzinfo=timezone.utc)  # Monday 10:00 UTC
     inside = engine.process_market_state(_market_state(monday, open_price=101.0, close_price=102.0))
     assert inside.action == "TRADE"
+
+
+def test_pattern_tracker_cluster_signal_and_settlement_cluster_stats():
+    tracker = SymbolicPatternTracker(
+        sequence_len=3,
+        ngram_size=2,
+        distance_threshold=100.0,
+        min_cluster_samples=1,
+        edge_winrate_threshold=0.60,
+    )
+    base = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    token = _repeated_token("BULL")
+
+    for _ in range(3):
+        tracker.observe_token(token)
+    tracker.snapshot_prediction(base, predicted_direction="BULL")
+
+    pre = tracker.cluster_signal_from_current_window(predicted_direction="BULL")
+    assert pre["cluster_id"] is None
+    assert pre["reason"] in {"no_cluster_match", "insufficient_sequence_window"}
+
+    settled = tracker.settle_prediction(base, is_win=True)
+    cluster = settled["cluster"]
+    assert cluster["cluster_id"] is not None
+    assert cluster["direction"] == "LONG"
+    assert cluster["support"] == 1
+    assert cluster["qualified"] is True
+
+    for _ in range(3):
+        tracker.observe_token(token)
+    post = tracker.cluster_signal_from_current_window(predicted_direction="BULL")
+    assert post["cluster_id"] == cluster["cluster_id"]
+    assert post["direction"] == "LONG"
+    assert post["support"] >= 1
+
+
+def test_engine_exposes_cluster_signal_from_runtime_window():
+    engine = OBLMEngine(
+        warmup_candles=1,
+        cluster_distance_threshold=100.0,
+        cluster_min_samples=1,
+    )
+    t0 = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
+    out = engine.process_market_state(_market_state(t0, open_price=100.0, close_price=101.0))
+
+    signal = engine.last_cluster_signal
+    assert out.direction in {"BULL", "BEAR"}
+    assert signal["direction"] in {"LONG", "SHORT"}
+    assert "reason" in signal
+
+
+def test_cluster_signal_uses_tightened_threshold_for_high_winrate_clusters():
+    tracker = SymbolicPatternTracker(
+        sequence_len=3,
+        ngram_size=2,
+        distance_threshold=10.0,
+        min_cluster_samples=1,
+        edge_winrate_threshold=0.60,
+        purity_split_winrate_threshold=0.70,
+        purity_split_min_support=1,
+        purity_split_tighten_factor=0.50,
+    )
+    token = _repeated_token("BULL")
+    seq = [token, token, token]
+
+    tracker._clusters = {
+        1: {
+            "cluster_id": 1,
+            "direction": "BULL",
+            "exemplar": list(seq),
+            "wins": 10,
+            "losses": 0,
+        }
+    }
+    tracker._weighted_distance = lambda _a, _b: 6.0  # type: ignore[method-assign]
+    for item in seq:
+        tracker.observe_token(item)
+
+    signal = tracker.cluster_signal_from_current_window(predicted_direction="BULL")
+    assert signal["reason"] == "no_cluster_match"
+    assert signal["effective_threshold"] == 5.0
+
+
+def test_cluster_assignment_splits_high_winrate_cluster_on_outlier():
+    tracker = SymbolicPatternTracker(
+        sequence_len=3,
+        ngram_size=2,
+        distance_threshold=10.0,
+        min_cluster_samples=1,
+        edge_winrate_threshold=0.60,
+        purity_split_winrate_threshold=0.70,
+        purity_split_min_support=1,
+        purity_split_tighten_factor=1.0,
+        purity_split_min_outliers=1,
+    )
+    token = _repeated_token("BULL")
+    seq = [token, token, token]
+
+    tracker._clusters = {
+        1: {
+            "cluster_id": 1,
+            "direction": "BULL",
+            "exemplar": list(seq),
+            "wins": 12,
+            "losses": 0,
+        }
+    }
+    tracker._next_cluster_id = 2
+    tracker._weighted_distance = lambda _a, _b: 1.0  # type: ignore[method-assign]
+    tracker._has_high_impact_outlier = lambda **_kwargs: True  # type: ignore[method-assign]
+
+    result = tracker._assign_and_update_cluster(
+        seq=seq,
+        predicted_direction="BULL",
+        is_win=True,
+    )
+    assert result["assignment_mode"] == "split_for_purity"
+    assert result["split_reason"] == "high_winrate_outlier"
+    assert result["cluster_id"] != 1

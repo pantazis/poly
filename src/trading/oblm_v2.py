@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import hashlib
 import json
 import logging
 import math
@@ -38,11 +39,19 @@ except ImportError:  # pragma: no cover - allows offline/unit-test imports witho
 try:
     from sklearn.feature_extraction.text import HashingVectorizer
     from sklearn.linear_model import SGDClassifier
+    try:
+        from sklearn.cluster import HDBSCAN as SklearnHDBSCAN
+        _SKLEARN_HDBSCAN_AVAILABLE = True
+    except Exception:  # pragma: no cover
+        SklearnHDBSCAN = None  # type: ignore[assignment]
+        _SKLEARN_HDBSCAN_AVAILABLE = False
 
     _SKLEARN_AVAILABLE = True
 except ImportError:  # pragma: no cover
     HashingVectorizer = None  # type: ignore[assignment]
     SGDClassifier = None  # type: ignore[assignment]
+    SklearnHDBSCAN = None  # type: ignore[assignment]
+    _SKLEARN_HDBSCAN_AVAILABLE = False
     _SKLEARN_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
@@ -307,6 +316,10 @@ def _is_trading_session_open(
 
 def _opposite_direction(direction: str) -> str:
     return "BEAR" if direction == "BULL" else "BULL"
+
+
+def _position_direction_label(direction: str) -> str:
+    return "LONG" if direction == "BULL" else "SHORT"
 
 
 def _format_position_label(position_1_based: int, sequence_len: int = 25) -> str:
@@ -884,7 +897,7 @@ class CalibrationTracker:
 
 
 class ConfidenceWinrateTracker:
-    def __init__(self, thresholds: list[int] | None = None, rolling_window: int = 30):
+    def __init__(self, thresholds: list[int] | None = None, rolling_window: int = 10):
         raw = thresholds or list(range(90, 0, -10))
         cleaned = sorted({int(t) for t in raw if 0 < int(t) <= 100}, reverse=True)
         self._thresholds = cleaned if cleaned else list(range(90, 0, -10))
@@ -952,15 +965,93 @@ class ConfidenceWinrateTracker:
 class SymbolicPatternTracker:
     """Tracks positional, fuzzy-gradient and n-gram sequence patterns."""
 
-    def __init__(self, sequence_len: int = 25, ngram_size: int = 3):
+    def __init__(
+        self,
+        sequence_len: int = 25,
+        ngram_size: int = 3,
+        cluster_mode: str = "tree",
+        rarity_z_threshold: float = 2.5,
+        impact_weight_cap: float = 10.0,
+        distance_threshold: float = 9.0,
+        min_cluster_samples: int = 30,
+        edge_winrate_threshold: float = 0.60,
+        purity_split_winrate_threshold: float = 0.75,
+        purity_split_min_support: int = 30,
+        purity_split_tighten_factor: float = 0.60,
+        purity_split_min_outliers: int = 1,
+        tree_rebuild_interval: int = 25,
+        tree_min_leaf_samples: int = 20,
+        tree_max_depth: int = 4,
+        tree_min_gain: float = 0.005,
+        tree_history_cap: int = 5000,
+        hdbscan_min_cluster_size: int = 20,
+        hdbscan_min_samples: int = 10,
+        hdbscan_rebuild_interval: int = 25,
+        hdbscan_outcome_weight: float = 2.0,
+        hdbscan_embedding_dim: int = 256,
+    ):
         self.sequence_len = max(2, int(sequence_len))
         self.ngram_size = max(2, int(ngram_size))
+        requested_mode = str(cluster_mode or "tree").strip().lower()
+        if requested_mode not in {"tree", "hdbscan"}:
+            requested_mode = "tree"
+        self.cluster_mode_requested = requested_mode
+        self.cluster_mode_active = requested_mode
+        if self.cluster_mode_requested == "hdbscan" and not _SKLEARN_HDBSCAN_AVAILABLE:
+            self.cluster_mode_active = "tree"
+            logger.warning("HDBSCAN clustering requested but unavailable; falling back to tree mode.")
+        self.rarity_z_threshold = max(0.1, float(rarity_z_threshold))
+        self.impact_weight_cap = max(1.0, float(impact_weight_cap))
+        self.distance_threshold = max(0.1, float(distance_threshold))
+        self.min_cluster_samples = max(1, int(min_cluster_samples))
+        self.edge_winrate_threshold = min(max(float(edge_winrate_threshold), 0.50), 0.99)
+        self.purity_split_winrate_threshold = min(
+            max(float(purity_split_winrate_threshold), 0.50),
+            0.99,
+        )
+        self.purity_split_min_support = max(1, int(purity_split_min_support))
+        self.purity_split_tighten_factor = min(
+            max(float(purity_split_tighten_factor), 0.10),
+            1.0,
+        )
+        self.purity_split_min_outliers = max(1, int(purity_split_min_outliers))
+        self.tree_rebuild_interval = max(1, int(tree_rebuild_interval))
+        self.tree_min_leaf_samples = max(2, int(tree_min_leaf_samples))
+        self.tree_max_depth = max(1, int(tree_max_depth))
+        self.tree_min_gain = max(0.0, float(tree_min_gain))
+        self.tree_history_cap = max(100, int(tree_history_cap))
+        self.hdbscan_min_cluster_size = max(2, int(hdbscan_min_cluster_size))
+        self.hdbscan_min_samples = max(1, int(hdbscan_min_samples))
+        self.hdbscan_rebuild_interval = max(1, int(hdbscan_rebuild_interval))
+        self.hdbscan_outcome_weight = max(0.0, float(hdbscan_outcome_weight))
+        self.hdbscan_embedding_dim = max(32, int(hdbscan_embedding_dim))
         self._rolling_tokens: deque[str] = deque(maxlen=self.sequence_len)
-        self._snapshot_by_minute: dict[str, list[str]] = {}
+        self._snapshot_by_minute: dict[str, dict[str, object]] = {}
 
         self._position_stats: dict[tuple[int, str, str], tuple[int, int]] = {}
         self._fragment_stats: dict[str, tuple[int, int]] = {}
         self._ngram_stats: dict[str, tuple[int, int]] = {}
+
+        self._token_position_counts: dict[tuple[int, str], int] = {}
+        self._position_total_sequences: dict[int, int] = {}
+        self._clusters: dict[int, dict[str, object]] = {}
+        self._next_cluster_id = 1
+        self._settled_sequences_by_direction: dict[str, list[dict[str, object]]] = {
+            "BULL": [],
+            "BEAR": [],
+        }
+        self._tree_by_direction: dict[str, dict[str, object]] = {}
+        self._hdbscan_clusters_by_direction: dict[str, dict[int, dict[str, object]]] = {}
+        self._next_tree_node_id = 1
+        self._last_cluster_signal: dict[str, object] = {
+            "cluster_id": None,
+            "direction": "NA",
+            "distance": None,
+            "support": 0,
+            "winrate_pct": 0.0,
+            "qualified": False,
+            "source": "cluster",
+        }
 
         self._win_sequences = 0
         self._loss_sequences = 0
@@ -997,14 +1088,17 @@ class SymbolicPatternTracker:
     def observe_token(self, token: str) -> None:
         self._rolling_tokens.append(token)
 
-    def snapshot_prediction(self, minute: datetime) -> None:
+    def snapshot_prediction(self, minute: datetime, predicted_direction: str | None = None) -> None:
         if len(self._rolling_tokens) > 0:
-            self._snapshot_by_minute[_minute_floor(minute).isoformat()] = list(self._rolling_tokens)
+            self._snapshot_by_minute[_minute_floor(minute).isoformat()] = {
+                "seq": list(self._rolling_tokens),
+                "predicted_direction": str(predicted_direction or "BULL"),
+            }
 
-    def record_prediction(self, minute: datetime, token: str) -> None:
+    def record_prediction(self, minute: datetime, token: str, predicted_direction: str | None = None) -> None:
         # Backward-compatible helper: observe token + snapshot prediction context.
         self.observe_token(token)
-        self.snapshot_prediction(minute)
+        self.snapshot_prediction(minute, predicted_direction=predicted_direction)
 
     def bootstrap_status(self) -> dict[str, int]:
         collected = len(self._rolling_tokens)
@@ -1019,15 +1113,26 @@ class SymbolicPatternTracker:
 
     def settle_prediction(self, minute: datetime, is_win: bool) -> dict[str, list[dict[str, object]]]:
         key = _minute_floor(minute).isoformat()
-        seq = self._snapshot_by_minute.pop(key, None)
-        if not seq:
+        snapshot = self._snapshot_by_minute.pop(key, None)
+        if not snapshot:
             return {
                 "winloss_rows": [],
                 "gradient_rows": [],
                 "ngram_rows": [],
                 "sequence_mode": "missing",
                 "sequence_len": 0,
+                "cluster": {
+                    "cluster_id": None,
+                    "direction": "NA",
+                    "distance": None,
+                    "support": 0,
+                    "winrate_pct": 0.0,
+                    "qualified": False,
+                },
             }
+
+        seq = [str(x) for x in snapshot.get("seq", [])]
+        predicted_direction = str(snapshot.get("predicted_direction", "BULL"))
 
         sequence_mode = "full" if len(seq) >= self.sequence_len else "partial"
         if sequence_mode == "full":
@@ -1073,13 +1178,581 @@ class SymbolicPatternTracker:
                 losses += 1
             self._ngram_stats[pattern] = (wins, losses)
 
+        cluster_result: dict[str, object] = {
+            "cluster_id": None,
+            "direction": _position_direction_label(predicted_direction),
+            "distance": None,
+            "support": 0,
+            "winrate_pct": 0.0,
+            "qualified": False,
+            "source": "cluster",
+        }
+        if sequence_mode == "full":
+            self._update_token_position_counts(seq)
+            self._record_settled_sequence(
+                seq=seq,
+                predicted_direction=predicted_direction,
+                is_win=bool(is_win),
+            )
+            cluster_result = self._assign_and_update_cluster(
+                seq=seq,
+                predicted_direction=predicted_direction,
+                is_win=is_win,
+            )
+            tree_view = self._tree_signal_from_current_window(
+                seq=seq,
+                predicted_direction=predicted_direction,
+            )
+            if tree_view is not None:
+                cluster_result["tree_leaf_id"] = str(tree_view.get("cluster_id", "NA"))
+                cluster_result["tree_path"] = str(tree_view.get("tree_path", "root"))
+                cluster_result["tree_winrate_pct"] = float(tree_view.get("winrate_pct", 0.0))
+                cluster_result["tree_support"] = int(tree_view.get("support", 0))
+
         return {
             "winloss_rows": self.winloss_rows(limit=40),
             "gradient_rows": self.gradient_rows(limit=40),
             "ngram_rows": self.ngram_rows(limit=40),
             "sequence_mode": sequence_mode,
             "sequence_len": len(seq),
+            "cluster": cluster_result,
         }
+
+    def _update_token_position_counts(self, seq: list[str]) -> None:
+        for idx, token in enumerate(seq):
+            key = (idx, token)
+            self._token_position_counts[key] = self._token_position_counts.get(key, 0) + 1
+            self._position_total_sequences[idx] = self._position_total_sequences.get(idx, 0) + 1
+
+    def _token_position_zscore(self, position: int, token: str) -> float:
+        total = int(self._position_total_sequences.get(position, 0))
+        if total <= 0:
+            return 0.0
+        counts = [
+            int(count)
+            for (pos, _token), count in self._token_position_counts.items()
+            if pos == position
+        ]
+        if len(counts) < 2:
+            return 0.0
+        mu = sum(counts) / len(counts)
+        var = sum((c - mu) ** 2 for c in counts) / len(counts)
+        sigma = math.sqrt(max(var, 0.0))
+        if sigma <= 1e-12:
+            return 0.0
+        count = float(self._token_position_counts.get((position, token), 0))
+        return (count - mu) / sigma
+
+    def _position_multiplier(self, idx: int, n: int) -> float:
+        if n <= 1:
+            return 1.0
+        return 0.5 + (idx / (n - 1))
+
+    def _impact_weight(self, idx: int, token: str) -> float:
+        z = self._token_position_zscore(idx, token)
+        if abs(z) < self.rarity_z_threshold:
+            return 1.0
+        # Smooth weighting to include medium-importance tokens and avoid brittle jumps.
+        strength = min(self.impact_weight_cap - 1.0, max(0.0, abs(z)))
+        return 1.0 + strength
+
+    def _high_impact_token_positions(self, seq: list[str]) -> dict[str, list[int]]:
+        result: dict[str, list[int]] = {}
+        for idx, token in enumerate(seq):
+            if self._impact_weight(idx, token) <= 1.0:
+                continue
+            result.setdefault(token, []).append(idx)
+        return result
+
+    def _weighted_distance(self, seq_a: list[str], seq_b: list[str]) -> float:
+        n = min(len(seq_a), len(seq_b))
+        if n == 0:
+            return 0.0
+
+        base_distance = 0.0
+        impact_distance = 0.0
+        for idx in range(n):
+            token_a = seq_a[idx]
+            token_b = seq_b[idx]
+            if token_a == token_b:
+                continue
+            pos_mult = self._position_multiplier(idx, n)
+            wa = self._impact_weight(idx, token_a)
+            wb = self._impact_weight(idx, token_b)
+            impact_boost = max(wa, wb)
+            base_distance += 1.0 * pos_mult
+            impact_distance += max(0.0, impact_boost - 1.0) * pos_mult
+
+        # Position check for high-impact token shifts.
+        shift_penalty = 0.0
+        imp_a = self._high_impact_token_positions(seq_a)
+        imp_b = self._high_impact_token_positions(seq_b)
+        shared = set(imp_a.keys()) | set(imp_b.keys())
+        for token in shared:
+            pa = imp_a.get(token, [])
+            pb = imp_b.get(token, [])
+            if not pa or not pb:
+                shift_penalty += 2.0
+                continue
+            min_shift = min(abs(a - b) for a in pa for b in pb)
+            if min_shift > 0:
+                shift_penalty += float(min_shift) * 0.75
+
+        return float(base_distance + impact_distance + shift_penalty)
+
+    @staticmethod
+    def _entropy_binary(wins: int, losses: int) -> float:
+        total = int(wins) + int(losses)
+        if total <= 0:
+            return 0.0
+        p_win = float(wins) / float(total)
+        p_loss = float(losses) / float(total)
+        entropy = 0.0
+        if p_win > 0.0:
+            entropy -= p_win * math.log2(p_win)
+        if p_loss > 0.0:
+            entropy -= p_loss * math.log2(p_loss)
+        return float(entropy)
+
+    @staticmethod
+    def _win_loss_counts(rows: list[dict[str, object]]) -> tuple[int, int]:
+        wins = sum(1 for row in rows if bool(row.get("is_win", False)))
+        losses = max(0, len(rows) - wins)
+        return int(wins), int(losses)
+
+    def _information_gain(
+        self,
+        parent_rows: list[dict[str, object]],
+        left_rows: list[dict[str, object]],
+        right_rows: list[dict[str, object]],
+    ) -> float:
+        pw, pl = self._win_loss_counts(parent_rows)
+        lw, ll = self._win_loss_counts(left_rows)
+        rw, rl = self._win_loss_counts(right_rows)
+        total = max(1, len(parent_rows))
+        parent_entropy = self._entropy_binary(pw, pl)
+        left_entropy = self._entropy_binary(lw, ll)
+        right_entropy = self._entropy_binary(rw, rl)
+        weighted_child = (len(left_rows) / total) * left_entropy + (len(right_rows) / total) * right_entropy
+        return float(parent_entropy - weighted_child)
+
+    def _best_divisive_split(
+        self,
+        rows: list[dict[str, object]],
+    ) -> tuple[int, str, float, list[dict[str, object]], list[dict[str, object]]] | None:
+        if not rows:
+            return None
+        min_len = min(len([str(x) for x in row.get("seq", [])]) for row in rows)
+        if min_len <= 0:
+            return None
+
+        best: tuple[int, str, float, list[dict[str, object]], list[dict[str, object]]] | None = None
+        for pos in range(min_len):
+            token_candidates = {
+                str(seq[pos])
+                for seq in ([row.get("seq", []) for row in rows])
+                if isinstance(seq, list) and len(seq) > pos
+            }
+            for token in token_candidates:
+                left = [row for row in rows if isinstance(row.get("seq", []), list) and len(row.get("seq", [])) > pos and str(row.get("seq", [])[pos]) == token]
+                right = [row for row in rows if row not in left]
+                if len(left) < self.tree_min_leaf_samples or len(right) < self.tree_min_leaf_samples:
+                    continue
+                gain = self._information_gain(rows, left, right)
+                if best is None or gain > best[2]:
+                    best = (pos, token, float(gain), left, right)
+        return best
+
+    def _build_divisive_tree_node(self, rows: list[dict[str, object]], depth: int) -> dict[str, object]:
+        wins, losses = self._win_loss_counts(rows)
+        support = wins + losses
+        node: dict[str, object] = {
+            "node_id": int(self._next_tree_node_id),
+            "depth": int(depth),
+            "wins": int(wins),
+            "losses": int(losses),
+            "support": int(support),
+            "winrate_pct": float((wins / support * 100.0) if support > 0 else 0.0),
+            "leaf": True,
+        }
+        self._next_tree_node_id += 1
+
+        if depth >= self.tree_max_depth:
+            return node
+        if support < (self.tree_min_leaf_samples * 2):
+            return node
+
+        best = self._best_divisive_split(rows)
+        if best is None:
+            return node
+        pos, token, gain, left_rows, right_rows = best
+        if float(gain) <= self.tree_min_gain:
+            return node
+
+        node["leaf"] = False
+        node["split"] = {
+            "position": int(pos),
+            "token": str(token),
+            "gain": float(gain),
+        }
+        node["left"] = self._build_divisive_tree_node(left_rows, depth + 1)
+        node["right"] = self._build_divisive_tree_node(right_rows, depth + 1)
+        return node
+
+    def _rebuild_direction_tree(self, predicted_direction: str) -> None:
+        rows = [
+            row
+            for row in self._settled_sequences_by_direction.get(predicted_direction, [])
+            if isinstance(row, dict)
+        ]
+        if len(rows) < (self.tree_min_leaf_samples * 2):
+            self._tree_by_direction.pop(predicted_direction, None)
+            return
+        root = self._build_divisive_tree_node(rows, depth=0)
+        root["direction"] = str(predicted_direction)
+        self._tree_by_direction[str(predicted_direction)] = root
+
+    def _sequence_embedding(self, seq: list[str], outcome_value: float = 0.0) -> list[float]:
+        dim = int(self.hdbscan_embedding_dim)
+        vec = [0.0] * dim
+        for idx, token in enumerate(seq):
+            key = f"{idx}:{token}".encode("utf-8")
+            digest = hashlib.blake2b(key, digest_size=8).digest()
+            bucket = int.from_bytes(digest, byteorder="big", signed=False) % dim
+            vec[bucket] += self._position_multiplier(idx, max(1, len(seq)))
+        vec.append(float(outcome_value) * float(self.hdbscan_outcome_weight))
+        return vec
+
+    def _rebuild_direction_hdbscan(self, predicted_direction: str) -> None:
+        if not _SKLEARN_HDBSCAN_AVAILABLE or SklearnHDBSCAN is None:
+            self._hdbscan_clusters_by_direction.pop(predicted_direction, None)
+            return
+        rows = [
+            row
+            for row in self._settled_sequences_by_direction.get(predicted_direction, [])
+            if isinstance(row, dict)
+        ]
+        if len(rows) < self.hdbscan_min_cluster_size:
+            self._hdbscan_clusters_by_direction.pop(predicted_direction, None)
+            return
+
+        x_rows: list[list[float]] = []
+        for row in rows:
+            seq = [str(x) for x in row.get("seq", [])]
+            if not seq:
+                continue
+            outcome = 1.0 if bool(row.get("is_win", False)) else -1.0
+            x_rows.append(self._sequence_embedding(seq=seq, outcome_value=outcome))
+        if len(x_rows) < self.hdbscan_min_cluster_size:
+            self._hdbscan_clusters_by_direction.pop(predicted_direction, None)
+            return
+
+        model = SklearnHDBSCAN(
+            min_cluster_size=int(self.hdbscan_min_cluster_size),
+            min_samples=int(self.hdbscan_min_samples),
+        )
+        labels = list(model.fit_predict(x_rows))
+
+        clusters: dict[int, dict[str, object]] = {}
+        for idx, label in enumerate(labels):
+            if int(label) < 0:
+                continue
+            row = rows[idx]
+            c = clusters.setdefault(
+                int(label),
+                {
+                    "cluster_id": f"hdb-{predicted_direction}-{int(label)}",
+                    "direction": str(predicted_direction),
+                    "wins": 0,
+                    "losses": 0,
+                    "support": 0,
+                    "prototype": [str(x) for x in row.get("seq", [])],
+                },
+            )
+            c["support"] = int(c.get("support", 0)) + 1
+            if bool(row.get("is_win", False)):
+                c["wins"] = int(c.get("wins", 0)) + 1
+            else:
+                c["losses"] = int(c.get("losses", 0)) + 1
+
+        self._hdbscan_clusters_by_direction[str(predicted_direction)] = clusters
+
+    def _hdbscan_signal_from_sequence(self, seq: list[str], predicted_direction: str) -> dict[str, object] | None:
+        clusters = self._hdbscan_clusters_by_direction.get(str(predicted_direction), {})
+        if not clusters:
+            return None
+        best: dict[str, object] | None = None
+        best_distance: float | None = None
+        for cluster in clusters.values():
+            prototype = [str(x) for x in cluster.get("prototype", [])]
+            if not prototype:
+                continue
+            distance = self._weighted_distance(seq, prototype)
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+                best = cluster
+        if best is None:
+            return None
+
+        wins = int(best.get("wins", 0))
+        losses = int(best.get("losses", 0))
+        support = wins + losses
+        winrate = (wins / support * 100.0) if support > 0 else 0.0
+        hi = self.edge_winrate_threshold * 100.0
+        lo = (1.0 - self.edge_winrate_threshold) * 100.0
+        qualified = support >= self.min_cluster_samples and (winrate >= hi or winrate <= lo)
+        return {
+            "cluster_id": str(best.get("cluster_id", "NA")),
+            "direction": _position_direction_label(str(predicted_direction)),
+            "distance": float(best_distance) if best_distance is not None else None,
+            "support": int(support),
+            "wins": int(wins),
+            "losses": int(losses),
+            "winrate_pct": float(winrate),
+            "qualified": bool(qualified),
+            "reason": "ok_hdbscan",
+            "source": "hdbscan",
+        }
+
+    def _record_settled_sequence(self, seq: list[str], predicted_direction: str, is_win: bool) -> None:
+        direction = str(predicted_direction)
+        if direction not in {"BULL", "BEAR"}:
+            return
+        rows = self._settled_sequences_by_direction.setdefault(direction, [])
+        rows.append({
+            "seq": list(seq),
+            "is_win": bool(is_win),
+        })
+        if len(rows) > self.tree_history_cap:
+            del rows[0 : len(rows) - self.tree_history_cap]
+
+        should_rebuild_tree = len(rows) <= self.tree_rebuild_interval or (len(rows) % self.tree_rebuild_interval == 0)
+        if should_rebuild_tree:
+            self._rebuild_direction_tree(direction)
+        if self.cluster_mode_active == "hdbscan":
+            should_rebuild_hdbscan = len(rows) <= self.hdbscan_rebuild_interval or (len(rows) % self.hdbscan_rebuild_interval == 0)
+            if should_rebuild_hdbscan:
+                self._rebuild_direction_hdbscan(direction)
+
+    def _tree_signal_from_current_window(self, seq: list[str], predicted_direction: str) -> dict[str, object] | None:
+        root = self._tree_by_direction.get(str(predicted_direction))
+        if not root or not isinstance(root, dict):
+            return None
+
+        node: dict[str, object] = root
+        path: list[str] = []
+        gain_sum = 0.0
+        while not bool(node.get("leaf", True)):
+            split = node.get("split", {}) if isinstance(node.get("split", {}), dict) else {}
+            pos = int(split.get("position", -1))
+            token = str(split.get("token", "NA"))
+            gain = float(split.get("gain", 0.0))
+            seq_token = seq[pos] if 0 <= pos < len(seq) else "NA"
+            go_left = seq_token == token
+            path.append(f"p{pos + 1}{'==' if go_left else '!='}{token}")
+            gain_sum += gain
+            next_node = node.get("left" if go_left else "right")
+            if not isinstance(next_node, dict):
+                break
+            node = next_node
+
+        wins = int(node.get("wins", 0))
+        losses = int(node.get("losses", 0))
+        support = wins + losses
+        winrate = float((wins / support * 100.0) if support > 0 else 0.0)
+        hi = self.edge_winrate_threshold * 100.0
+        lo = (1.0 - self.edge_winrate_threshold) * 100.0
+        qualified = support >= self.min_cluster_samples and (winrate >= hi or winrate <= lo)
+
+        return {
+            "cluster_id": f"tree-{int(node.get('node_id', 0))}",
+            "direction": _position_direction_label(str(predicted_direction)),
+            "distance": None,
+            "support": int(support),
+            "wins": int(wins),
+            "losses": int(losses),
+            "winrate_pct": float(winrate),
+            "qualified": bool(qualified),
+            "reason": "ok_tree",
+            "source": "tree",
+            "tree_path": "root" if not path else f"root->{'/'.join(path)}",
+            "tree_gain_sum": float(gain_sum),
+        }
+
+    def _cluster_stats_view(self, cluster: dict[str, object], distance: float | None = None) -> dict[str, object]:
+        wins = int(cluster.get("wins", 0))
+        losses = int(cluster.get("losses", 0))
+        support = wins + losses
+        winrate = (wins / support * 100.0) if support > 0 else 0.0
+        hi = self.edge_winrate_threshold * 100.0
+        lo = (1.0 - self.edge_winrate_threshold) * 100.0
+        qualified = support >= self.min_cluster_samples and (winrate >= hi or winrate <= lo)
+        return {
+            "cluster_id": int(cluster.get("cluster_id", 0)),
+            "direction": _position_direction_label(str(cluster.get("direction", "BULL"))),
+            "distance": distance,
+            "support": support,
+            "wins": wins,
+            "losses": losses,
+            "winrate_pct": winrate,
+            "qualified": qualified,
+        }
+
+    def _cluster_support_winrate(self, cluster: dict[str, object]) -> tuple[int, float]:
+        wins = int(cluster.get("wins", 0))
+        losses = int(cluster.get("losses", 0))
+        support = wins + losses
+        winrate = (wins / support) if support > 0 else 0.0
+        return support, winrate
+
+    def _effective_threshold_for_cluster(self, cluster: dict[str, object]) -> float:
+        support, winrate = self._cluster_support_winrate(cluster)
+        threshold = float(self.distance_threshold)
+        if support >= self.purity_split_min_support and winrate >= self.purity_split_winrate_threshold:
+            threshold *= self.purity_split_tighten_factor
+        return max(0.1, float(threshold))
+
+    def _high_impact_position_token_set(self, seq: list[str]) -> set[tuple[int, str]]:
+        result: set[tuple[int, str]] = set()
+        for idx, token in enumerate(seq):
+            if self._impact_weight(idx, token) > 1.0:
+                result.add((idx, token))
+        return result
+
+    def _has_high_impact_outlier(self, seq: list[str], exemplar: list[str]) -> bool:
+        seq_imp = self._high_impact_position_token_set(seq)
+        ex_imp = self._high_impact_position_token_set(exemplar)
+        outliers = seq_imp - ex_imp
+        return len(outliers) >= self.purity_split_min_outliers
+
+    def _closest_cluster(self, seq: list[str], predicted_direction: str) -> tuple[dict[str, object] | None, float | None]:
+        best_cluster: dict[str, object] | None = None
+        best_distance: float | None = None
+        for cluster in self._clusters.values():
+            if str(cluster.get("direction")) != predicted_direction:
+                continue
+            exemplar = [str(x) for x in cluster.get("exemplar", [])]
+            if not exemplar:
+                continue
+            distance = self._weighted_distance(seq, exemplar)
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+                best_cluster = cluster
+        return best_cluster, best_distance
+
+    def _assign_and_update_cluster(
+        self,
+        seq: list[str],
+        predicted_direction: str,
+        is_win: bool,
+    ) -> dict[str, object]:
+        cluster, distance = self._closest_cluster(seq, predicted_direction)
+        assignment_mode = "join_existing"
+        split_reason = "none"
+        effective_threshold = float(self.distance_threshold)
+
+        if cluster is not None:
+            effective_threshold = self._effective_threshold_for_cluster(cluster)
+
+        force_new = cluster is None or distance is None or distance > effective_threshold
+        if force_new:
+            assignment_mode = "new_cluster"
+            split_reason = "distance_gate"
+        elif cluster is not None:
+            support, winrate = self._cluster_support_winrate(cluster)
+            exemplar = [str(x) for x in cluster.get("exemplar", [])]
+            if (
+                support >= self.purity_split_min_support
+                and winrate >= self.purity_split_winrate_threshold
+                and self._has_high_impact_outlier(seq=seq, exemplar=exemplar)
+            ):
+                force_new = True
+                assignment_mode = "split_for_purity"
+                split_reason = "high_winrate_outlier"
+
+        if force_new:
+            cluster_id = self._next_cluster_id
+            self._next_cluster_id += 1
+            cluster = {
+                "cluster_id": cluster_id,
+                "direction": predicted_direction,
+                "exemplar": list(seq),
+                "wins": 0,
+                "losses": 0,
+            }
+            self._clusters[cluster_id] = cluster
+            distance = 0.0
+
+        if is_win:
+            cluster["wins"] = int(cluster.get("wins", 0)) + 1
+        else:
+            cluster["losses"] = int(cluster.get("losses", 0)) + 1
+        view = self._cluster_stats_view(cluster, distance=distance)
+        view["assignment_mode"] = assignment_mode
+        view["effective_threshold"] = float(effective_threshold)
+        view["split_reason"] = split_reason
+        view["source"] = "cluster"
+        return view
+
+    def cluster_signal_from_current_window(self, predicted_direction: str) -> dict[str, object]:
+        seq = list(self._rolling_tokens)
+        if len(seq) < self.sequence_len:
+            self._last_cluster_signal = {
+                "cluster_id": None,
+                "direction": _position_direction_label(predicted_direction),
+                "distance": None,
+                "support": 0,
+                "wins": 0,
+                "losses": 0,
+                "winrate_pct": 0.0,
+                "qualified": False,
+                "reason": "insufficient_sequence_window",
+                "source": "cluster",
+            }
+            return dict(self._last_cluster_signal)
+
+        if self.cluster_mode_active == "hdbscan":
+            hdbscan_signal = self._hdbscan_signal_from_sequence(seq=seq, predicted_direction=predicted_direction)
+            if hdbscan_signal is not None:
+                self._last_cluster_signal = dict(hdbscan_signal)
+                return dict(self._last_cluster_signal)
+
+        tree_signal = self._tree_signal_from_current_window(seq=seq, predicted_direction=predicted_direction)
+        if tree_signal is not None:
+            self._last_cluster_signal = dict(tree_signal)
+            return dict(self._last_cluster_signal)
+
+        cluster, distance = self._closest_cluster(seq, predicted_direction)
+        effective_threshold = (
+            self._effective_threshold_for_cluster(cluster)
+            if cluster is not None
+            else float(self.distance_threshold)
+        )
+        if cluster is None or distance is None or distance > effective_threshold:
+            self._last_cluster_signal = {
+                "cluster_id": None,
+                "direction": _position_direction_label(predicted_direction),
+                "distance": distance,
+                "support": 0,
+                "wins": 0,
+                "losses": 0,
+                "winrate_pct": 0.0,
+                "qualified": False,
+                "reason": "no_cluster_match",
+                "effective_threshold": float(effective_threshold),
+                "source": "cluster",
+            }
+            return dict(self._last_cluster_signal)
+
+        view = self._cluster_stats_view(cluster, distance=distance)
+        view["reason"] = "ok"
+        view["effective_threshold"] = float(effective_threshold)
+        view["source"] = "cluster"
+        self._last_cluster_signal = view
+        return dict(self._last_cluster_signal)
+
+    def last_cluster_signal(self) -> dict[str, object]:
+        return dict(self._last_cluster_signal)
 
     def fuzzy_bias_from_current_window(
         self,
@@ -1250,6 +1923,27 @@ class SymbolicPatternTracker:
         return {
             "sequence_len": self.sequence_len,
             "ngram_size": self.ngram_size,
+            "cluster_mode_requested": self.cluster_mode_requested,
+            "cluster_mode_active": self.cluster_mode_active,
+            "rarity_z_threshold": self.rarity_z_threshold,
+            "impact_weight_cap": self.impact_weight_cap,
+            "distance_threshold": self.distance_threshold,
+            "min_cluster_samples": self.min_cluster_samples,
+            "edge_winrate_threshold": self.edge_winrate_threshold,
+            "purity_split_winrate_threshold": self.purity_split_winrate_threshold,
+            "purity_split_min_support": self.purity_split_min_support,
+            "purity_split_tighten_factor": self.purity_split_tighten_factor,
+            "purity_split_min_outliers": self.purity_split_min_outliers,
+            "tree_rebuild_interval": self.tree_rebuild_interval,
+            "tree_min_leaf_samples": self.tree_min_leaf_samples,
+            "tree_max_depth": self.tree_max_depth,
+            "tree_min_gain": self.tree_min_gain,
+            "tree_history_cap": self.tree_history_cap,
+            "hdbscan_min_cluster_size": self.hdbscan_min_cluster_size,
+            "hdbscan_min_samples": self.hdbscan_min_samples,
+            "hdbscan_rebuild_interval": self.hdbscan_rebuild_interval,
+            "hdbscan_outcome_weight": self.hdbscan_outcome_weight,
+            "hdbscan_embedding_dim": self.hdbscan_embedding_dim,
             "rolling_tokens": list(self._rolling_tokens),
             "snapshot_by_minute": dict(self._snapshot_by_minute),
             "position_stats": [
@@ -1274,6 +1968,22 @@ class SymbolicPatternTracker:
             "loss_sequences": self._loss_sequences,
             "partial_sequences": self._partial_sequences,
             "full_sequences": self._full_sequences,
+            "token_position_counts": [
+                {
+                    "position": pos,
+                    "token": token,
+                    "count": count,
+                }
+                for (pos, token), count in self._token_position_counts.items()
+            ],
+            "position_total_sequences": dict(self._position_total_sequences),
+            "clusters": list(self._clusters.values()),
+            "next_cluster_id": self._next_cluster_id,
+            "settled_sequences_by_direction": dict(self._settled_sequences_by_direction),
+            "tree_by_direction": dict(self._tree_by_direction),
+            "hdbscan_clusters_by_direction": dict(self._hdbscan_clusters_by_direction),
+            "next_tree_node_id": self._next_tree_node_id,
+            "last_cluster_signal": dict(self._last_cluster_signal),
         }
 
     @classmethod
@@ -1281,15 +1991,43 @@ class SymbolicPatternTracker:
         obj = cls(
             sequence_len=int(state.get("sequence_len", 25)),
             ngram_size=int(state.get("ngram_size", 3)),
+            cluster_mode=str(state.get("cluster_mode_requested", "tree")),
+            rarity_z_threshold=float(state.get("rarity_z_threshold", 2.5)),
+            impact_weight_cap=float(state.get("impact_weight_cap", 10.0)),
+            distance_threshold=float(state.get("distance_threshold", 9.0)),
+            min_cluster_samples=int(state.get("min_cluster_samples", 30)),
+            edge_winrate_threshold=float(state.get("edge_winrate_threshold", 0.60)),
+            purity_split_winrate_threshold=float(state.get("purity_split_winrate_threshold", 0.75)),
+            purity_split_min_support=int(state.get("purity_split_min_support", 30)),
+            purity_split_tighten_factor=float(state.get("purity_split_tighten_factor", 0.60)),
+            purity_split_min_outliers=int(state.get("purity_split_min_outliers", 1)),
+            tree_rebuild_interval=int(state.get("tree_rebuild_interval", 25)),
+            tree_min_leaf_samples=int(state.get("tree_min_leaf_samples", 20)),
+            tree_max_depth=int(state.get("tree_max_depth", 4)),
+            tree_min_gain=float(state.get("tree_min_gain", 0.005)),
+            tree_history_cap=int(state.get("tree_history_cap", 5000)),
+            hdbscan_min_cluster_size=int(state.get("hdbscan_min_cluster_size", 20)),
+            hdbscan_min_samples=int(state.get("hdbscan_min_samples", 10)),
+            hdbscan_rebuild_interval=int(state.get("hdbscan_rebuild_interval", 25)),
+            hdbscan_outcome_weight=float(state.get("hdbscan_outcome_weight", 2.0)),
+            hdbscan_embedding_dim=int(state.get("hdbscan_embedding_dim", 256)),
         )
         obj._rolling_tokens = deque(
             (str(t) for t in state.get("rolling_tokens", [])),
             maxlen=obj.sequence_len,
         )
-        obj._snapshot_by_minute = {
-            str(k): [str(x) for x in v]
-            for k, v in state.get("snapshot_by_minute", {}).items()
-        }
+        # Backward-compatible hydrate: older state stored list[str], newer stores dict payload.
+        for key, value in state.get("snapshot_by_minute", {}).items():
+            if isinstance(value, dict):
+                seq = [str(x) for x in value.get("seq", [])]
+                direction = str(value.get("predicted_direction", "BULL"))
+            else:
+                seq = [str(x) for x in value]
+                direction = "BULL"
+            obj._snapshot_by_minute[str(key)] = {
+                "seq": seq,
+                "predicted_direction": direction,
+            }
         for row in state.get("position_stats", []):
             key = (int(row["position"]), str(row["feature"]), str(row["label"]))
             obj._position_stats[key] = (int(row["wins"]), int(row["total"]))
@@ -1301,6 +2039,61 @@ class SymbolicPatternTracker:
         obj._loss_sequences = int(state.get("loss_sequences", 0))
         obj._partial_sequences = int(state.get("partial_sequences", 0))
         obj._full_sequences = int(state.get("full_sequences", 0))
+        for row in state.get("token_position_counts", []):
+            key = (int(row["position"]), str(row["token"]))
+            obj._token_position_counts[key] = int(row["count"])
+        obj._position_total_sequences = {
+            int(k): int(v)
+            for k, v in state.get("position_total_sequences", {}).items()
+        }
+        obj._clusters = {
+            int(row.get("cluster_id", i + 1)): {
+                "cluster_id": int(row.get("cluster_id", i + 1)),
+                "direction": str(row.get("direction", "BULL")),
+                "exemplar": [str(x) for x in row.get("exemplar", [])],
+                "wins": int(row.get("wins", 0)),
+                "losses": int(row.get("losses", 0)),
+            }
+            for i, row in enumerate(state.get("clusters", []))
+        }
+        obj._next_cluster_id = int(state.get("next_cluster_id", len(obj._clusters) + 1))
+        raw_settled = state.get("settled_sequences_by_direction", {})
+        if isinstance(raw_settled, dict):
+            obj._settled_sequences_by_direction = {
+                "BULL": [row for row in raw_settled.get("BULL", []) if isinstance(row, dict)],
+                "BEAR": [row for row in raw_settled.get("BEAR", []) if isinstance(row, dict)],
+            }
+        raw_tree = state.get("tree_by_direction", {})
+        if isinstance(raw_tree, dict):
+            obj._tree_by_direction = {
+                str(k): v
+                for k, v in raw_tree.items()
+                if isinstance(v, dict)
+            }
+        raw_hdbscan = state.get("hdbscan_clusters_by_direction", {})
+        if isinstance(raw_hdbscan, dict):
+            obj._hdbscan_clusters_by_direction = {
+                str(direction): {
+                    int(k): v for k, v in clusters.items() if isinstance(v, dict)
+                }
+                for direction, clusters in raw_hdbscan.items()
+                if isinstance(clusters, dict)
+            }
+        obj._next_tree_node_id = int(state.get("next_tree_node_id", 1))
+        obj._last_cluster_signal = dict(
+            state.get(
+                "last_cluster_signal",
+                {
+                    "cluster_id": None,
+                    "direction": "NA",
+                    "distance": None,
+                    "support": 0,
+                    "winrate_pct": 0.0,
+                    "qualified": False,
+                    "source": "cluster",
+                },
+            )
+        )
         return obj
 
 
@@ -1322,12 +2115,55 @@ class OBLMEngine:
         trading_session_weekdays_only: bool = True,
         trading_session_start_hour_utc: int = 9,
         trading_session_end_hour_utc: int = 19,
+        cluster_mode: str = "tree",
+        cluster_rarity_z_threshold: float = 2.5,
+        cluster_impact_weight_cap: float = 10.0,
+        cluster_distance_threshold: float = 9.0,
+        cluster_min_samples: int = 30,
+        cluster_edge_winrate_threshold: float = 0.60,
+        cluster_purity_split_winrate_threshold: float = 0.75,
+        cluster_purity_split_min_support: int = 30,
+        cluster_purity_split_tighten_factor: float = 0.60,
+        cluster_purity_split_min_outliers: int = 1,
+        cluster_tree_rebuild_interval: int = 25,
+        cluster_tree_min_leaf_samples: int = 20,
+        cluster_tree_max_depth: int = 4,
+        cluster_tree_min_gain: float = 0.005,
+        cluster_tree_history_cap: int = 5000,
+        cluster_hdbscan_min_cluster_size: int = 20,
+        cluster_hdbscan_min_samples: int = 10,
+        cluster_hdbscan_rebuild_interval: int = 25,
+        cluster_hdbscan_outcome_weight: float = 2.0,
+        cluster_hdbscan_embedding_dim: int = 256,
     ):
         self._quantizer = quantizer or AdaptiveQuantizer(rolling_window=10080)
         self._model = model or IncrementalOBLMModel()
         self._calibration = calibration or CalibrationTracker()
         self._indicator_state = indicator_state or RollingIndicatorState(rolling_window=10080)
-        self._pattern_tracker = pattern_tracker or SymbolicPatternTracker(sequence_len=25, ngram_size=3)
+        self._pattern_tracker = pattern_tracker or SymbolicPatternTracker(
+            sequence_len=25,
+            ngram_size=3,
+            cluster_mode=cluster_mode,
+            rarity_z_threshold=cluster_rarity_z_threshold,
+            impact_weight_cap=cluster_impact_weight_cap,
+            distance_threshold=cluster_distance_threshold,
+            min_cluster_samples=cluster_min_samples,
+            edge_winrate_threshold=cluster_edge_winrate_threshold,
+            purity_split_winrate_threshold=cluster_purity_split_winrate_threshold,
+            purity_split_min_support=cluster_purity_split_min_support,
+            purity_split_tighten_factor=cluster_purity_split_tighten_factor,
+            purity_split_min_outliers=cluster_purity_split_min_outliers,
+            tree_rebuild_interval=cluster_tree_rebuild_interval,
+            tree_min_leaf_samples=cluster_tree_min_leaf_samples,
+            tree_max_depth=cluster_tree_max_depth,
+            tree_min_gain=cluster_tree_min_gain,
+            tree_history_cap=cluster_tree_history_cap,
+            hdbscan_min_cluster_size=cluster_hdbscan_min_cluster_size,
+            hdbscan_min_samples=cluster_hdbscan_min_samples,
+            hdbscan_rebuild_interval=cluster_hdbscan_rebuild_interval,
+            hdbscan_outcome_weight=cluster_hdbscan_outcome_weight,
+            hdbscan_embedding_dim=cluster_hdbscan_embedding_dim,
+        )
         self._holding_minutes = max(1, int(holding_minutes))
         self._fuzzy_bias_weight = min(max(float(fuzzy_bias_weight), 0.0), 1.0)
         self._fuzzy_min_support_sequences = max(1, int(fuzzy_min_support_sequences))
@@ -1353,6 +2189,17 @@ class OBLMEngine:
         self._last_action: str = "TRADE"
         self._last_reason: str = "ok"
         self._last_warmup_remaining: int = max(0, self._warmup_candles)
+        self._last_cluster_signal: dict[str, object] = {
+            "cluster_id": None,
+            "direction": "NA",
+            "distance": None,
+            "support": 0,
+            "wins": 0,
+            "losses": 0,
+            "winrate_pct": 0.0,
+            "qualified": False,
+            "reason": "boot",
+        }
 
     def _compute_uncertainty(
         self,
@@ -1504,6 +2351,9 @@ class OBLMEngine:
         uncertainty_meta = self._compute_uncertainty(p_bull=p_bull, fuzzy_bias=fuzzy_bias)
         uncertainty = float(uncertainty_meta["score"])
         predicted_direction = "BULL" if p_bull >= 0.5 else "BEAR"
+        self._last_cluster_signal = self._pattern_tracker.cluster_signal_from_current_window(
+            predicted_direction=predicted_direction,
+        )
         confidence = p_bull if predicted_direction == "BULL" else 1.0 - p_bull
         action = "TRADE"
         reason = "ok"
@@ -1545,7 +2395,10 @@ class OBLMEngine:
                 bull_probability=p_bull,
             )
             self._pending.append(pending)
-            self._pattern_tracker.snapshot_prediction(minute=minute)
+            self._pattern_tracker.snapshot_prediction(
+                minute=minute,
+                predicted_direction=predicted_direction,
+            )
 
         self._last_settlements = self._settle_after_holding(
             current_close=state.candle.close,
@@ -1611,6 +2464,10 @@ class OBLMEngine:
     @property
     def warmup_remaining(self) -> int:
         return int(self._last_warmup_remaining)
+
+    @property
+    def last_cluster_signal(self) -> dict[str, object]:
+        return dict(self._last_cluster_signal)
 
     def dump_state(self) -> dict:
         return {
@@ -1702,63 +2559,29 @@ def _log_confidence_winrate_snapshot(
     tracker: ConfidenceWinrateTracker,
     minute: str,
     source: str,
+    last_token: str,
+    predicted_direction: str,
+    cluster_winrate_pct: float,
+    cluster_support: int,
+    cluster_id: str,
     confidence_log_path: str,
     confidence_log_max_lines: int,
     min_total_for_log: int = 1
 ) -> None:
-    threshold_rows = tracker.summary_rows()
-    vol2h_rows = tracker.summary_rows_vol2h_by_threshold()
-
-    min_total = max(1, int(min_total_for_log))
-    logged_any = False
-    max_total_seen = 0
-    for row in threshold_rows:
-        max_total_seen = max(max_total_seen, int(row["total"]))
-    for row in threshold_rows:
-        if int(row["total"]) < min_total:
-            continue
-        confidence_logger.info(
-            (
-                "WINRATE minute=%s source=%s confidence_gt=%d wins=%d total=%d "
-                "winrate=%.2f%% empirical_winrate=%.2f%%"
-            ),
-            minute,
-            source,
-            int(row["threshold"]),
-            int(row["wins"]),
-            int(row["total"]),
-            float(row["winrate_pct"]),
-            float(row["winrate_pct"]),
-        )
-        logged_any = True
-    for row in vol2h_rows:
-        if int(row["total"]) < min_total:
-            continue
-        confidence_logger.info(
-            (
-                "WINRATE_VOL2H_CONF minute=%s source=%s bucket=%s confidence_gt=%d "
-                "wins=%d total=%d winrate=%.2f%% empirical_winrate=%.2f%%"
-            ),
-            minute,
-            source,
-            str(row["bucket"]),
-            int(row["threshold"]),
-            int(row["wins"]),
-            int(row["total"]),
-            float(row["winrate_pct"]),
-            float(row["winrate_pct"]),
-        )
-        logged_any = True
-    if not logged_any:
-        left = max(0, int(min_total) - int(max_total_seen))
-        confidence_logger.info(
-            "WINRATE_BOOTSTRAP minute=%s source=%s min_total=%d left=%d max_total_seen=%d status=INSUFFICIENT_DATA",
-            minute,
-            source,
-            min_total,
-            left,
-            max_total_seen,
-        )
+    # Compact runtime snapshot for the training bot:
+    # one latest line with token + direction + tokenized-chain group winrate.
+    _ = tracker  # kept for signature compatibility
+    _ = source
+    _ = cluster_support
+    _ = cluster_id
+    _ = minute
+    _ = min_total_for_log
+    confidence_logger.info(
+        "token=%s predicted_direction=%s group_winrate=%.2f%%",
+        str(last_token or "NA"),
+        str(predicted_direction or "NA"),
+        float(cluster_winrate_pct),
+    )
     _trim_log_to_last_lines(
         log_path=confidence_log_path,
         max_lines=confidence_log_max_lines,
@@ -1868,6 +2691,26 @@ async def run_oblm_training(
     trading_session_weekdays_only: bool = True,
     trading_session_start_hour_utc: int = 9,
     trading_session_end_hour_utc: int = 19,
+    cluster_mode: str = "tree",
+    cluster_rarity_z_threshold: float = 2.5,
+    cluster_impact_weight_cap: float = 10.0,
+    cluster_distance_threshold: float = 9.0,
+    cluster_min_samples: int = 30,
+    cluster_edge_winrate_threshold: float = 0.60,
+    cluster_purity_split_winrate_threshold: float = 0.75,
+    cluster_purity_split_min_support: int = 30,
+    cluster_purity_split_tighten_factor: float = 0.60,
+    cluster_purity_split_min_outliers: int = 1,
+    cluster_tree_rebuild_interval: int = 25,
+    cluster_tree_min_leaf_samples: int = 20,
+    cluster_tree_max_depth: int = 4,
+    cluster_tree_min_gain: float = 0.005,
+    cluster_tree_history_cap: int = 5000,
+    cluster_hdbscan_min_cluster_size: int = 20,
+    cluster_hdbscan_min_samples: int = 10,
+    cluster_hdbscan_rebuild_interval: int = 25,
+    cluster_hdbscan_outcome_weight: float = 2.0,
+    cluster_hdbscan_embedding_dim: int = 256,
     decision_log_path: str = "logs/oblm/decisions.log",
     decision_log_max_bytes: int = 2_000_000,
     decision_log_backup_count: int = 5,
@@ -1899,7 +2742,7 @@ async def run_oblm_training(
         max_bytes=summary_log_max_bytes,
         backup_count=summary_log_backup_count,
     )
-    confidence_tracker = ConfidenceWinrateTracker()
+    confidence_tracker = ConfidenceWinrateTracker(rolling_window=10)
     _trim_log_to_last_lines(log_path=decision_log_path, max_lines=decision_log_max_lines)
     _trim_log_to_last_lines(log_path=summary_log_path, max_lines=summary_log_max_lines)
 
@@ -1921,6 +2764,42 @@ async def run_oblm_training(
             engine._trading_session_weekdays_only = bool(trading_session_weekdays_only)
             engine._trading_session_start_hour_utc = int(trading_session_start_hour_utc) % 24
             engine._trading_session_end_hour_utc = int(trading_session_end_hour_utc) % 24
+            requested_mode = str(cluster_mode or "tree").strip().lower()
+            if requested_mode not in {"tree", "hdbscan"}:
+                requested_mode = "tree"
+            engine._pattern_tracker.cluster_mode_requested = requested_mode
+            if requested_mode == "hdbscan" and not _SKLEARN_HDBSCAN_AVAILABLE:
+                engine._pattern_tracker.cluster_mode_active = "tree"
+            else:
+                engine._pattern_tracker.cluster_mode_active = requested_mode
+            engine._pattern_tracker.rarity_z_threshold = max(0.1, float(cluster_rarity_z_threshold))
+            engine._pattern_tracker.impact_weight_cap = max(1.0, float(cluster_impact_weight_cap))
+            engine._pattern_tracker.distance_threshold = max(0.1, float(cluster_distance_threshold))
+            engine._pattern_tracker.min_cluster_samples = max(1, int(cluster_min_samples))
+            engine._pattern_tracker.edge_winrate_threshold = min(
+                max(float(cluster_edge_winrate_threshold), 0.50),
+                0.99,
+            )
+            engine._pattern_tracker.purity_split_winrate_threshold = min(
+                max(float(cluster_purity_split_winrate_threshold), 0.50),
+                0.99,
+            )
+            engine._pattern_tracker.purity_split_min_support = max(1, int(cluster_purity_split_min_support))
+            engine._pattern_tracker.purity_split_tighten_factor = min(
+                max(float(cluster_purity_split_tighten_factor), 0.10),
+                1.0,
+            )
+            engine._pattern_tracker.purity_split_min_outliers = max(1, int(cluster_purity_split_min_outliers))
+            engine._pattern_tracker.tree_rebuild_interval = max(1, int(cluster_tree_rebuild_interval))
+            engine._pattern_tracker.tree_min_leaf_samples = max(2, int(cluster_tree_min_leaf_samples))
+            engine._pattern_tracker.tree_max_depth = max(1, int(cluster_tree_max_depth))
+            engine._pattern_tracker.tree_min_gain = max(0.0, float(cluster_tree_min_gain))
+            engine._pattern_tracker.tree_history_cap = max(100, int(cluster_tree_history_cap))
+            engine._pattern_tracker.hdbscan_min_cluster_size = max(2, int(cluster_hdbscan_min_cluster_size))
+            engine._pattern_tracker.hdbscan_min_samples = max(1, int(cluster_hdbscan_min_samples))
+            engine._pattern_tracker.hdbscan_rebuild_interval = max(1, int(cluster_hdbscan_rebuild_interval))
+            engine._pattern_tracker.hdbscan_outcome_weight = max(0.0, float(cluster_hdbscan_outcome_weight))
+            engine._pattern_tracker.hdbscan_embedding_dim = max(32, int(cluster_hdbscan_embedding_dim))
             engine._last_warmup_remaining = max(0, engine._warmup_candles - int(engine._candles_seen))
             logger.info("Loaded existing OBLM model from %s", checkpoint)
         except Exception as exc:
@@ -1938,6 +2817,26 @@ async def run_oblm_training(
                 trading_session_weekdays_only=trading_session_weekdays_only,
                 trading_session_start_hour_utc=trading_session_start_hour_utc,
                 trading_session_end_hour_utc=trading_session_end_hour_utc,
+                cluster_mode=cluster_mode,
+                cluster_rarity_z_threshold=cluster_rarity_z_threshold,
+                cluster_impact_weight_cap=cluster_impact_weight_cap,
+                cluster_distance_threshold=cluster_distance_threshold,
+                cluster_min_samples=cluster_min_samples,
+                cluster_edge_winrate_threshold=cluster_edge_winrate_threshold,
+                cluster_purity_split_winrate_threshold=cluster_purity_split_winrate_threshold,
+                cluster_purity_split_min_support=cluster_purity_split_min_support,
+                cluster_purity_split_tighten_factor=cluster_purity_split_tighten_factor,
+                cluster_purity_split_min_outliers=cluster_purity_split_min_outliers,
+                cluster_tree_rebuild_interval=cluster_tree_rebuild_interval,
+                cluster_tree_min_leaf_samples=cluster_tree_min_leaf_samples,
+                cluster_tree_max_depth=cluster_tree_max_depth,
+                cluster_tree_min_gain=cluster_tree_min_gain,
+                cluster_tree_history_cap=cluster_tree_history_cap,
+                cluster_hdbscan_min_cluster_size=cluster_hdbscan_min_cluster_size,
+                cluster_hdbscan_min_samples=cluster_hdbscan_min_samples,
+                cluster_hdbscan_rebuild_interval=cluster_hdbscan_rebuild_interval,
+                cluster_hdbscan_outcome_weight=cluster_hdbscan_outcome_weight,
+                cluster_hdbscan_embedding_dim=cluster_hdbscan_embedding_dim,
             )
     else:
         engine = OBLMEngine(
@@ -1953,6 +2852,26 @@ async def run_oblm_training(
             trading_session_weekdays_only=trading_session_weekdays_only,
             trading_session_start_hour_utc=trading_session_start_hour_utc,
             trading_session_end_hour_utc=trading_session_end_hour_utc,
+            cluster_mode=cluster_mode,
+            cluster_rarity_z_threshold=cluster_rarity_z_threshold,
+            cluster_impact_weight_cap=cluster_impact_weight_cap,
+            cluster_distance_threshold=cluster_distance_threshold,
+            cluster_min_samples=cluster_min_samples,
+            cluster_edge_winrate_threshold=cluster_edge_winrate_threshold,
+            cluster_purity_split_winrate_threshold=cluster_purity_split_winrate_threshold,
+            cluster_purity_split_min_support=cluster_purity_split_min_support,
+            cluster_purity_split_tighten_factor=cluster_purity_split_tighten_factor,
+            cluster_purity_split_min_outliers=cluster_purity_split_min_outliers,
+            cluster_tree_rebuild_interval=cluster_tree_rebuild_interval,
+            cluster_tree_min_leaf_samples=cluster_tree_min_leaf_samples,
+            cluster_tree_max_depth=cluster_tree_max_depth,
+            cluster_tree_min_gain=cluster_tree_min_gain,
+            cluster_tree_history_cap=cluster_tree_history_cap,
+            cluster_hdbscan_min_cluster_size=cluster_hdbscan_min_cluster_size,
+            cluster_hdbscan_min_samples=cluster_hdbscan_min_samples,
+            cluster_hdbscan_rebuild_interval=cluster_hdbscan_rebuild_interval,
+            cluster_hdbscan_outcome_weight=cluster_hdbscan_outcome_weight,
+            cluster_hdbscan_embedding_dim=cluster_hdbscan_embedding_dim,
         )
 
     if prefill_candles_path:
@@ -2055,6 +2974,27 @@ async def run_oblm_training(
             " ".join((engine.last_model_input or "NA").split(" ")[:8]),
             engine.warmed_up,
         )
+        direction_label = _position_direction_label(output.direction)
+        decision_logger.info(
+            "DIRECTION minute=%s predicted_direction=%s",
+            output.timestamp,
+            direction_label,
+        )
+        cluster_signal = engine.last_cluster_signal
+        decision_logger.info(
+            "CLUSTER_SIGNAL minute=%s direction=%s cluster_id=%s support=%d winrate=%.2f%% qualified=%s distance=%s reason=%s source=%s tree_path=%s tree_gain=%.4f",
+            output.timestamp,
+            str(cluster_signal.get("direction", "NA")),
+            str(cluster_signal.get("cluster_id", "NA")),
+            int(cluster_signal.get("support", 0)),
+            float(cluster_signal.get("winrate_pct", 0.0)),
+            bool(cluster_signal.get("qualified", False)),
+            "NA" if cluster_signal.get("distance") is None else f"{float(cluster_signal.get('distance', 0.0)):.4f}",
+            str(cluster_signal.get("reason", "na")),
+            str(cluster_signal.get("source", "cluster")),
+            str(cluster_signal.get("tree_path", "NA")),
+            float(cluster_signal.get("tree_gain_sum", 0.0)),
+        )
         fuzzy = engine.last_fuzzy_bias
         top_pos = ",".join(
             f"{str(row.get('fragment'))}:{float(row.get('delta', 0.0)):+.2f}"
@@ -2089,9 +3029,10 @@ async def run_oblm_training(
                 vol2h_bucket=str(settled.get("vol2h_bucket", "NA")),
             )
             decision_logger.info(
-                "SETTLE pred_minute=%s predicted=%s realized=%s correct=%s confidence=%.3f exit=%.4f reason=%s age_minutes=%d sequence_mode=%s sequence_len=%d",
+                "SETTLE pred_minute=%s predicted=%s predicted_direction=%s realized=%s correct=%s confidence=%.3f exit=%.4f reason=%s age_minutes=%d sequence_mode=%s sequence_len=%d",
                 settled["pred_minute"],
                 settled["predicted"],
+                _position_direction_label(str(settled["predicted"])),
                 settled["realized"],
                 settled["correct"],
                 float(settled["confidence"]),
@@ -2100,6 +3041,24 @@ async def run_oblm_training(
                 int(settled["age_minutes"]),
                 str(settled.get("sequence_mode", "na")),
                 int(settled.get("sequence_len", 0)),
+            )
+            cluster = settled.get("cluster", {}) if isinstance(settled.get("cluster"), dict) else {}
+            decision_logger.info(
+                "SETTLE_CLUSTER pred_minute=%s cluster_id=%s direction=%s support=%d wins=%d losses=%d winrate=%.2f%% qualified=%s distance=%s source=%s tree_leaf_id=%s tree_support=%s tree_winrate=%s tree_path=%s",
+                settled["pred_minute"],
+                str(cluster.get("cluster_id", "NA")),
+                str(cluster.get("direction", "NA")),
+                int(cluster.get("support", 0)),
+                int(cluster.get("wins", 0)),
+                int(cluster.get("losses", 0)),
+                float(cluster.get("winrate_pct", 0.0)),
+                bool(cluster.get("qualified", False)),
+                "NA" if cluster.get("distance") is None else f"{float(cluster.get('distance', 0.0)):.4f}",
+                str(cluster.get("source", "cluster")),
+                str(cluster.get("tree_leaf_id", "NA")),
+                str(cluster.get("tree_support", "NA")),
+                str(cluster.get("tree_winrate_pct", "NA")),
+                str(cluster.get("tree_path", "NA")),
             )
 
             winloss_rows = settled.get("winloss_rows", [])
@@ -2165,6 +3124,11 @@ async def run_oblm_training(
                 tracker=confidence_tracker,
                 minute=output.timestamp,
                 source="settlement",
+                last_token=str(engine.last_token or "NA"),
+                predicted_direction=_position_direction_label(output.direction),
+                cluster_winrate_pct=float(engine.last_cluster_signal.get("winrate_pct", 0.0)),
+                cluster_support=int(engine.last_cluster_signal.get("support", 0)),
+                cluster_id=str(engine.last_cluster_signal.get("cluster_id", "NA")),
                 confidence_log_path=confidence_log_path,
                 confidence_log_max_lines=confidence_log_max_lines,
                 min_total_for_log=min_total_for_log,
@@ -2220,6 +3184,11 @@ async def run_oblm_training(
                 tracker=confidence_tracker,
                 minute=now_minute,
                 source="heartbeat",
+                last_token=str(engine.last_token or "NA"),
+                predicted_direction=str(engine.last_cluster_signal.get("direction", "NA")),
+                cluster_winrate_pct=float(engine.last_cluster_signal.get("winrate_pct", 0.0)),
+                cluster_support=int(engine.last_cluster_signal.get("support", 0)),
+                cluster_id=str(engine.last_cluster_signal.get("cluster_id", "NA")),
                 confidence_log_path=confidence_log_path,
                 confidence_log_max_lines=confidence_log_max_lines,
                 min_total_for_log=min_total_for_log,
@@ -2250,6 +3219,11 @@ async def run_oblm_training(
             tracker=confidence_tracker,
             minute=_minute_floor(datetime.now(timezone.utc)).isoformat(),
             source="shutdown",
+            last_token=str(engine.last_token or "NA"),
+            predicted_direction=str(engine.last_cluster_signal.get("direction", "NA")),
+            cluster_winrate_pct=float(engine.last_cluster_signal.get("winrate_pct", 0.0)),
+            cluster_support=int(engine.last_cluster_signal.get("support", 0)),
+            cluster_id=str(engine.last_cluster_signal.get("cluster_id", "NA")),
             confidence_log_path=confidence_log_path,
             confidence_log_max_lines=confidence_log_max_lines,
             min_total_for_log=min_total_for_log,
@@ -2439,6 +3413,126 @@ def _parse_oblm_args() -> argparse.Namespace:
         default=19,
         help="When session gate is enabled, exclusive UTC end hour (0-23)",
     )
+    parser.add_argument(
+        "--cluster-mode",
+        default="tree",
+        choices=["tree", "hdbscan"],
+        help="Cluster discovery mode: divisive tree (entropy gain) or HDBSCAN density mode",
+    )
+    parser.add_argument(
+        "--cluster-rarity-z-threshold",
+        type=float,
+        default=2.5,
+        help="Absolute z-score threshold for high-impact token@position rarity",
+    )
+    parser.add_argument(
+        "--cluster-impact-weight-cap",
+        type=float,
+        default=10.0,
+        help="Maximum rarity weight used in weighted chain distance",
+    )
+    parser.add_argument(
+        "--cluster-distance-threshold",
+        type=float,
+        default=9.0,
+        help="Maximum weighted distance to assign chain to existing cluster",
+    )
+    parser.add_argument(
+        "--cluster-min-samples",
+        type=int,
+        default=30,
+        help="Minimum cluster samples required before cluster is treated as statistically qualified",
+    )
+    parser.add_argument(
+        "--cluster-edge-winrate-threshold",
+        type=float,
+        default=0.60,
+        help="Qualified cluster requires winrate >= threshold or <= (1-threshold)",
+    )
+    parser.add_argument(
+        "--cluster-purity-split-winrate-threshold",
+        type=float,
+        default=0.75,
+        help="When nearest cluster winrate is above this (with enough support), tighten join threshold",
+    )
+    parser.add_argument(
+        "--cluster-purity-split-min-support",
+        type=int,
+        default=30,
+        help="Minimum cluster support required before purity split logic is active",
+    )
+    parser.add_argument(
+        "--cluster-purity-split-tighten-factor",
+        type=float,
+        default=0.60,
+        help="Multiplier applied to distance threshold for high-win clusters (lower = stricter)",
+    )
+    parser.add_argument(
+        "--cluster-purity-split-min-outliers",
+        type=int,
+        default=1,
+        help="Minimum high-impact outlier token@position pairs required to force purity split",
+    )
+    parser.add_argument(
+        "--cluster-tree-rebuild-interval",
+        type=int,
+        default=25,
+        help="Rebuild interval (in settled samples) for divisive tree mode",
+    )
+    parser.add_argument(
+        "--cluster-tree-min-leaf-samples",
+        type=int,
+        default=20,
+        help="Minimum samples required per branch leaf in divisive tree mode",
+    )
+    parser.add_argument(
+        "--cluster-tree-max-depth",
+        type=int,
+        default=4,
+        help="Maximum recursive split depth for divisive tree mode",
+    )
+    parser.add_argument(
+        "--cluster-tree-min-gain",
+        type=float,
+        default=0.005,
+        help="Minimum entropy gain required to keep a divisive split",
+    )
+    parser.add_argument(
+        "--cluster-tree-history-cap",
+        type=int,
+        default=5000,
+        help="Maximum settled chains retained per direction for tree/HDBSCAN rebuild",
+    )
+    parser.add_argument(
+        "--cluster-hdbscan-min-cluster-size",
+        type=int,
+        default=20,
+        help="HDBSCAN minimum cluster size",
+    )
+    parser.add_argument(
+        "--cluster-hdbscan-min-samples",
+        type=int,
+        default=10,
+        help="HDBSCAN min_samples value",
+    )
+    parser.add_argument(
+        "--cluster-hdbscan-rebuild-interval",
+        type=int,
+        default=25,
+        help="Rebuild interval (in settled samples) for HDBSCAN mode",
+    )
+    parser.add_argument(
+        "--cluster-hdbscan-outcome-weight",
+        type=float,
+        default=2.0,
+        help="Weight for outcome (+1/-1) dimension in HDBSCAN embedding",
+    )
+    parser.add_argument(
+        "--cluster-hdbscan-embedding-dim",
+        type=int,
+        default=256,
+        help="Hashed embedding dimensionality for HDBSCAN clustering",
+    )
     parser.add_argument("--decision-log-path", default="logs/oblm/decisions.log", help="Decision log path")
     parser.add_argument("--decision-log-max-bytes", type=int, default=2_000_000, help="Decision log max bytes")
     parser.add_argument("--decision-log-backup-count", type=int, default=5, help="Decision log backups")
@@ -2501,6 +3595,26 @@ def main() -> None:
             trading_session_weekdays_only=args.trading_session_weekdays_only,
             trading_session_start_hour_utc=args.trading_session_start_hour_utc,
             trading_session_end_hour_utc=args.trading_session_end_hour_utc,
+            cluster_mode=args.cluster_mode,
+            cluster_rarity_z_threshold=args.cluster_rarity_z_threshold,
+            cluster_impact_weight_cap=args.cluster_impact_weight_cap,
+            cluster_distance_threshold=args.cluster_distance_threshold,
+            cluster_min_samples=args.cluster_min_samples,
+            cluster_edge_winrate_threshold=args.cluster_edge_winrate_threshold,
+            cluster_purity_split_winrate_threshold=args.cluster_purity_split_winrate_threshold,
+            cluster_purity_split_min_support=args.cluster_purity_split_min_support,
+            cluster_purity_split_tighten_factor=args.cluster_purity_split_tighten_factor,
+            cluster_purity_split_min_outliers=args.cluster_purity_split_min_outliers,
+            cluster_tree_rebuild_interval=args.cluster_tree_rebuild_interval,
+            cluster_tree_min_leaf_samples=args.cluster_tree_min_leaf_samples,
+            cluster_tree_max_depth=args.cluster_tree_max_depth,
+            cluster_tree_min_gain=args.cluster_tree_min_gain,
+            cluster_tree_history_cap=args.cluster_tree_history_cap,
+            cluster_hdbscan_min_cluster_size=args.cluster_hdbscan_min_cluster_size,
+            cluster_hdbscan_min_samples=args.cluster_hdbscan_min_samples,
+            cluster_hdbscan_rebuild_interval=args.cluster_hdbscan_rebuild_interval,
+            cluster_hdbscan_outcome_weight=args.cluster_hdbscan_outcome_weight,
+            cluster_hdbscan_embedding_dim=args.cluster_hdbscan_embedding_dim,
             decision_log_path=args.decision_log_path,
             decision_log_max_bytes=args.decision_log_max_bytes,
             decision_log_backup_count=args.decision_log_backup_count,
