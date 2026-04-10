@@ -989,6 +989,11 @@ class SymbolicPatternTracker:
         hdbscan_rebuild_interval: int = 25,
         hdbscan_outcome_weight: float = 2.0,
         hdbscan_embedding_dim: int = 256,
+        cluster_adaptive_enabled: bool = False,
+        cluster_adaptive_target_settled: int = 500,
+        cluster_adaptive_distance_loose: float = 18.0,
+        cluster_adaptive_rarity_z_loose: float = 1.8,
+        cluster_adaptive_min_samples_loose: int = 5,
     ):
         self.sequence_len = max(2, int(sequence_len))
         self.ngram_size = max(2, int(ngram_size))
@@ -1025,6 +1030,20 @@ class SymbolicPatternTracker:
         self.hdbscan_rebuild_interval = max(1, int(hdbscan_rebuild_interval))
         self.hdbscan_outcome_weight = max(0.0, float(hdbscan_outcome_weight))
         self.hdbscan_embedding_dim = max(32, int(hdbscan_embedding_dim))
+        self.cluster_adaptive_enabled = bool(cluster_adaptive_enabled)
+        self.cluster_adaptive_target_settled = max(1, int(cluster_adaptive_target_settled))
+        self.cluster_adaptive_distance_loose = max(
+            0.1,
+            float(cluster_adaptive_distance_loose),
+        )
+        self.cluster_adaptive_rarity_z_loose = max(
+            0.1,
+            float(cluster_adaptive_rarity_z_loose),
+        )
+        self.cluster_adaptive_min_samples_loose = max(
+            1,
+            int(cluster_adaptive_min_samples_loose),
+        )
         self._rolling_tokens: deque[str] = deque(maxlen=self.sequence_len)
         self._snapshot_by_minute: dict[str, dict[str, object]] = {}
 
@@ -1057,6 +1076,37 @@ class SymbolicPatternTracker:
         self._loss_sequences = 0
         self._partial_sequences = 0
         self._full_sequences = 0
+
+    def _adaptive_progress(self) -> float:
+        if not self.cluster_adaptive_enabled:
+            return 1.0
+        n = max(0, int(self._full_sequences))
+        target = max(1, int(self.cluster_adaptive_target_settled))
+        return min(1.0, max(0.0, float(n) / float(target)))
+
+    def _effective_distance_threshold(self) -> float:
+        if not self.cluster_adaptive_enabled:
+            return float(self.distance_threshold)
+        s = self._adaptive_progress()
+        loose = max(0.1, float(self.cluster_adaptive_distance_loose))
+        strict = max(0.1, float(self.distance_threshold))
+        return float(loose + ((strict - loose) * s))
+
+    def _effective_rarity_z_threshold(self) -> float:
+        if not self.cluster_adaptive_enabled:
+            return float(self.rarity_z_threshold)
+        s = self._adaptive_progress()
+        loose = max(0.1, float(self.cluster_adaptive_rarity_z_loose))
+        strict = max(0.1, float(self.rarity_z_threshold))
+        return float(loose + ((strict - loose) * s))
+
+    def _effective_min_cluster_samples(self) -> int:
+        if not self.cluster_adaptive_enabled:
+            return int(self.min_cluster_samples)
+        s = self._adaptive_progress()
+        loose = max(1, int(self.cluster_adaptive_min_samples_loose))
+        strict = max(1, int(self.min_cluster_samples))
+        return int(round(loose + ((strict - loose) * s)))
 
     @staticmethod
     def _parse_token(token: str) -> dict[str, str]:
@@ -1250,7 +1300,7 @@ class SymbolicPatternTracker:
 
     def _impact_weight(self, idx: int, token: str) -> float:
         z = self._token_position_zscore(idx, token)
-        if abs(z) < self.rarity_z_threshold:
+        if abs(z) < self._effective_rarity_z_threshold():
             return 1.0
         # Smooth weighting to include medium-importance tokens and avoid brittle jumps.
         strength = min(self.impact_weight_cap - 1.0, max(0.0, abs(z)))
@@ -1500,7 +1550,7 @@ class SymbolicPatternTracker:
         winrate = (wins / support * 100.0) if support > 0 else 0.0
         hi = self.edge_winrate_threshold * 100.0
         lo = (1.0 - self.edge_winrate_threshold) * 100.0
-        qualified = support >= self.min_cluster_samples and (winrate >= hi or winrate <= lo)
+        qualified = support >= self._effective_min_cluster_samples() and (winrate >= hi or winrate <= lo)
         return {
             "cluster_id": str(best.get("cluster_id", "NA")),
             "direction": _position_direction_label(str(predicted_direction)),
@@ -1562,7 +1612,7 @@ class SymbolicPatternTracker:
         winrate = float((wins / support * 100.0) if support > 0 else 0.0)
         hi = self.edge_winrate_threshold * 100.0
         lo = (1.0 - self.edge_winrate_threshold) * 100.0
-        qualified = support >= self.min_cluster_samples and (winrate >= hi or winrate <= lo)
+        qualified = support >= self._effective_min_cluster_samples() and (winrate >= hi or winrate <= lo)
 
         return {
             "cluster_id": f"tree-{int(node.get('node_id', 0))}",
@@ -1586,7 +1636,7 @@ class SymbolicPatternTracker:
         winrate = (wins / support * 100.0) if support > 0 else 0.0
         hi = self.edge_winrate_threshold * 100.0
         lo = (1.0 - self.edge_winrate_threshold) * 100.0
-        qualified = support >= self.min_cluster_samples and (winrate >= hi or winrate <= lo)
+        qualified = support >= self._effective_min_cluster_samples() and (winrate >= hi or winrate <= lo)
         return {
             "cluster_id": int(cluster.get("cluster_id", 0)),
             "direction": _position_direction_label(str(cluster.get("direction", "BULL"))),
@@ -1607,7 +1657,7 @@ class SymbolicPatternTracker:
 
     def _effective_threshold_for_cluster(self, cluster: dict[str, object]) -> float:
         support, winrate = self._cluster_support_winrate(cluster)
-        threshold = float(self.distance_threshold)
+        threshold = self._effective_distance_threshold()
         if support >= self.purity_split_min_support and winrate >= self.purity_split_winrate_threshold:
             threshold *= self.purity_split_tighten_factor
         return max(0.1, float(threshold))
@@ -1649,7 +1699,7 @@ class SymbolicPatternTracker:
         cluster, distance = self._closest_cluster(seq, predicted_direction)
         assignment_mode = "join_existing"
         split_reason = "none"
-        effective_threshold = float(self.distance_threshold)
+        effective_threshold = self._effective_distance_threshold()
 
         if cluster is not None:
             effective_threshold = self._effective_threshold_for_cluster(cluster)
@@ -1726,7 +1776,7 @@ class SymbolicPatternTracker:
         effective_threshold = (
             self._effective_threshold_for_cluster(cluster)
             if cluster is not None
-            else float(self.distance_threshold)
+            else self._effective_distance_threshold()
         )
         if cluster is None or distance is None or distance > effective_threshold:
             self._last_cluster_signal = {
@@ -1929,6 +1979,11 @@ class SymbolicPatternTracker:
             "impact_weight_cap": self.impact_weight_cap,
             "distance_threshold": self.distance_threshold,
             "min_cluster_samples": self.min_cluster_samples,
+            "cluster_adaptive_enabled": self.cluster_adaptive_enabled,
+            "cluster_adaptive_target_settled": self.cluster_adaptive_target_settled,
+            "cluster_adaptive_distance_loose": self.cluster_adaptive_distance_loose,
+            "cluster_adaptive_rarity_z_loose": self.cluster_adaptive_rarity_z_loose,
+            "cluster_adaptive_min_samples_loose": self.cluster_adaptive_min_samples_loose,
             "edge_winrate_threshold": self.edge_winrate_threshold,
             "purity_split_winrate_threshold": self.purity_split_winrate_threshold,
             "purity_split_min_support": self.purity_split_min_support,
@@ -1996,6 +2051,11 @@ class SymbolicPatternTracker:
             impact_weight_cap=float(state.get("impact_weight_cap", 10.0)),
             distance_threshold=float(state.get("distance_threshold", 9.0)),
             min_cluster_samples=int(state.get("min_cluster_samples", 30)),
+            cluster_adaptive_enabled=bool(state.get("cluster_adaptive_enabled", False)),
+            cluster_adaptive_target_settled=int(state.get("cluster_adaptive_target_settled", 500)),
+            cluster_adaptive_distance_loose=float(state.get("cluster_adaptive_distance_loose", 18.0)),
+            cluster_adaptive_rarity_z_loose=float(state.get("cluster_adaptive_rarity_z_loose", 1.8)),
+            cluster_adaptive_min_samples_loose=int(state.get("cluster_adaptive_min_samples_loose", 5)),
             edge_winrate_threshold=float(state.get("edge_winrate_threshold", 0.60)),
             purity_split_winrate_threshold=float(state.get("purity_split_winrate_threshold", 0.75)),
             purity_split_min_support=int(state.get("purity_split_min_support", 30)),
@@ -2135,6 +2195,11 @@ class OBLMEngine:
         cluster_hdbscan_rebuild_interval: int = 25,
         cluster_hdbscan_outcome_weight: float = 2.0,
         cluster_hdbscan_embedding_dim: int = 256,
+        cluster_adaptive_enabled: bool = False,
+        cluster_adaptive_target_settled: int = 500,
+        cluster_adaptive_distance_loose: float = 18.0,
+        cluster_adaptive_rarity_z_loose: float = 1.8,
+        cluster_adaptive_min_samples_loose: int = 5,
     ):
         self._quantizer = quantizer or AdaptiveQuantizer(rolling_window=10080)
         self._model = model or IncrementalOBLMModel()
@@ -2163,6 +2228,11 @@ class OBLMEngine:
             hdbscan_rebuild_interval=cluster_hdbscan_rebuild_interval,
             hdbscan_outcome_weight=cluster_hdbscan_outcome_weight,
             hdbscan_embedding_dim=cluster_hdbscan_embedding_dim,
+            cluster_adaptive_enabled=cluster_adaptive_enabled,
+            cluster_adaptive_target_settled=cluster_adaptive_target_settled,
+            cluster_adaptive_distance_loose=cluster_adaptive_distance_loose,
+            cluster_adaptive_rarity_z_loose=cluster_adaptive_rarity_z_loose,
+            cluster_adaptive_min_samples_loose=cluster_adaptive_min_samples_loose,
         )
         self._holding_minutes = max(1, int(holding_minutes))
         self._fuzzy_bias_weight = min(max(float(fuzzy_bias_weight), 0.0), 1.0)
@@ -2711,6 +2781,11 @@ async def run_oblm_training(
     cluster_hdbscan_rebuild_interval: int = 25,
     cluster_hdbscan_outcome_weight: float = 2.0,
     cluster_hdbscan_embedding_dim: int = 256,
+    cluster_adaptive_enabled: bool = False,
+    cluster_adaptive_target_settled: int = 500,
+    cluster_adaptive_distance_loose: float = 18.0,
+    cluster_adaptive_rarity_z_loose: float = 1.8,
+    cluster_adaptive_min_samples_loose: int = 5,
     decision_log_path: str = "logs/oblm/decisions.log",
     decision_log_max_bytes: int = 2_000_000,
     decision_log_backup_count: int = 5,
@@ -2800,6 +2875,11 @@ async def run_oblm_training(
             engine._pattern_tracker.hdbscan_rebuild_interval = max(1, int(cluster_hdbscan_rebuild_interval))
             engine._pattern_tracker.hdbscan_outcome_weight = max(0.0, float(cluster_hdbscan_outcome_weight))
             engine._pattern_tracker.hdbscan_embedding_dim = max(32, int(cluster_hdbscan_embedding_dim))
+            engine._pattern_tracker.cluster_adaptive_enabled = bool(cluster_adaptive_enabled)
+            engine._pattern_tracker.cluster_adaptive_target_settled = max(1, int(cluster_adaptive_target_settled))
+            engine._pattern_tracker.cluster_adaptive_distance_loose = max(0.1, float(cluster_adaptive_distance_loose))
+            engine._pattern_tracker.cluster_adaptive_rarity_z_loose = max(0.1, float(cluster_adaptive_rarity_z_loose))
+            engine._pattern_tracker.cluster_adaptive_min_samples_loose = max(1, int(cluster_adaptive_min_samples_loose))
             engine._last_warmup_remaining = max(0, engine._warmup_candles - int(engine._candles_seen))
             logger.info("Loaded existing OBLM model from %s", checkpoint)
         except Exception as exc:
@@ -2837,6 +2917,11 @@ async def run_oblm_training(
                 cluster_hdbscan_rebuild_interval=cluster_hdbscan_rebuild_interval,
                 cluster_hdbscan_outcome_weight=cluster_hdbscan_outcome_weight,
                 cluster_hdbscan_embedding_dim=cluster_hdbscan_embedding_dim,
+                cluster_adaptive_enabled=cluster_adaptive_enabled,
+                cluster_adaptive_target_settled=cluster_adaptive_target_settled,
+                cluster_adaptive_distance_loose=cluster_adaptive_distance_loose,
+                cluster_adaptive_rarity_z_loose=cluster_adaptive_rarity_z_loose,
+                cluster_adaptive_min_samples_loose=cluster_adaptive_min_samples_loose,
             )
     else:
         engine = OBLMEngine(
@@ -2872,6 +2957,11 @@ async def run_oblm_training(
             cluster_hdbscan_rebuild_interval=cluster_hdbscan_rebuild_interval,
             cluster_hdbscan_outcome_weight=cluster_hdbscan_outcome_weight,
             cluster_hdbscan_embedding_dim=cluster_hdbscan_embedding_dim,
+            cluster_adaptive_enabled=cluster_adaptive_enabled,
+            cluster_adaptive_target_settled=cluster_adaptive_target_settled,
+            cluster_adaptive_distance_loose=cluster_adaptive_distance_loose,
+            cluster_adaptive_rarity_z_loose=cluster_adaptive_rarity_z_loose,
+            cluster_adaptive_min_samples_loose=cluster_adaptive_min_samples_loose,
         )
 
     if prefill_candles_path:
@@ -3533,6 +3623,36 @@ def _parse_oblm_args() -> argparse.Namespace:
         default=256,
         help="Hashed embedding dimensionality for HDBSCAN clustering",
     )
+    parser.add_argument(
+        "--cluster-adaptive-enabled",
+        type=_parse_bool,
+        default=False,
+        help="Enable adaptive loose->strict clustering schedule as settled samples grow",
+    )
+    parser.add_argument(
+        "--cluster-adaptive-target-settled",
+        type=int,
+        default=500,
+        help="Settled full-sequence target where adaptive schedule reaches strict values",
+    )
+    parser.add_argument(
+        "--cluster-adaptive-distance-loose",
+        type=float,
+        default=18.0,
+        help="Loose starting distance threshold used at low settled sample counts",
+    )
+    parser.add_argument(
+        "--cluster-adaptive-rarity-z-loose",
+        type=float,
+        default=1.8,
+        help="Loose starting rarity z-threshold used at low settled sample counts",
+    )
+    parser.add_argument(
+        "--cluster-adaptive-min-samples-loose",
+        type=int,
+        default=5,
+        help="Loose starting min-cluster-samples used at low settled sample counts",
+    )
     parser.add_argument("--decision-log-path", default="logs/oblm/decisions.log", help="Decision log path")
     parser.add_argument("--decision-log-max-bytes", type=int, default=2_000_000, help="Decision log max bytes")
     parser.add_argument("--decision-log-backup-count", type=int, default=5, help="Decision log backups")
@@ -3615,6 +3735,11 @@ def main() -> None:
             cluster_hdbscan_rebuild_interval=args.cluster_hdbscan_rebuild_interval,
             cluster_hdbscan_outcome_weight=args.cluster_hdbscan_outcome_weight,
             cluster_hdbscan_embedding_dim=args.cluster_hdbscan_embedding_dim,
+            cluster_adaptive_enabled=args.cluster_adaptive_enabled,
+            cluster_adaptive_target_settled=args.cluster_adaptive_target_settled,
+            cluster_adaptive_distance_loose=args.cluster_adaptive_distance_loose,
+            cluster_adaptive_rarity_z_loose=args.cluster_adaptive_rarity_z_loose,
+            cluster_adaptive_min_samples_loose=args.cluster_adaptive_min_samples_loose,
             decision_log_path=args.decision_log_path,
             decision_log_max_bytes=args.decision_log_max_bytes,
             decision_log_backup_count=args.decision_log_backup_count,

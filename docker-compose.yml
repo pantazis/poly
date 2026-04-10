@@ -19,7 +19,7 @@ services:
       [
         "sh",
         "-c",
-        "rm -f /app/data/oblm/model.pkl && exec python /app/src/trading/oblm_v2.py --rolling-window 10080 --warmup-candles 1 --min-total-for-log 1 --trading-session-enabled false"
+        "rm -f /app/data/oblm/model.pkl && exec python /app/src/trading/oblm_v2.py --rolling-window 10080 --warmup-candles 1 --min-total-for-log 1 --trading-session-enabled false --cluster-adaptive-enabled true --cluster-adaptive-target-settled 200 --cluster-distance-threshold 12 --cluster-rarity-z-threshold 2.2 --cluster-min-samples 12 --cluster-adaptive-distance-loose 40 --cluster-adaptive-rarity-z-loose 1.2 --cluster-adaptive-min-samples-loose 2"
       ]
     depends_on:
       - metrics-sqlite
@@ -69,6 +69,43 @@ services:
       - ./data:/app/data
     environment:
       - TZ=UTC
+    networks:
+      - trading-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  oblm-groups-page:
+    build: .
+    container_name: oblm-groups-page
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "src.trading.groups_leaderboard",
+        "--model-path",
+        "/app/data/oblm/model.pkl",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8090",
+        "--default-min-support",
+        "1"
+      ]
+    depends_on:
+      - oblm-trainer
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    environment:
+      - TZ=UTC
+    ports:
+      - "8090:8090"
     networks:
       - trading-net
     healthcheck:
