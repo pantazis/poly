@@ -994,6 +994,21 @@ class SymbolicPatternTracker:
         cluster_adaptive_distance_loose: float = 18.0,
         cluster_adaptive_rarity_z_loose: float = 1.8,
         cluster_adaptive_min_samples_loose: int = 5,
+        cluster_dynamic_threshold_enabled: bool = True,
+        cluster_dynamic_recalibration_interval: int = 100,
+        cluster_dynamic_window_sequences: int = 1000,
+        cluster_dynamic_k: int = 4,
+        cluster_dynamic_z_multiplier: float = -0.5,
+        cluster_dynamic_sharpness: float = 0.70,
+        cluster_dynamic_quality_low: float = 0.20,
+        cluster_dynamic_quality_high: float = 0.55,
+        cluster_dynamic_quality_step: float = 0.10,
+        cluster_dynamic_min_threshold: float = 0.1,
+        cluster_dynamic_max_threshold: float = 250.0,
+        cluster_local_winrate_threshold: float = 0.85,
+        cluster_local_min_support: int = 20,
+        cluster_local_distance_quantile: float = 0.30,
+        cluster_distance_history_cap: int = 200,
     ):
         self.sequence_len = max(2, int(sequence_len))
         self.ngram_size = max(2, int(ngram_size))
@@ -1044,6 +1059,33 @@ class SymbolicPatternTracker:
             1,
             int(cluster_adaptive_min_samples_loose),
         )
+        self.cluster_dynamic_threshold_enabled = bool(cluster_dynamic_threshold_enabled)
+        self.cluster_dynamic_recalibration_interval = max(1, int(cluster_dynamic_recalibration_interval))
+        self.cluster_dynamic_window_sequences = max(50, int(cluster_dynamic_window_sequences))
+        self.cluster_dynamic_k = max(1, int(cluster_dynamic_k))
+        self.cluster_dynamic_z_multiplier = float(cluster_dynamic_z_multiplier)
+        self.cluster_dynamic_sharpness = min(max(float(cluster_dynamic_sharpness), 0.1), 2.0)
+        self.cluster_dynamic_quality_low = min(max(float(cluster_dynamic_quality_low), -1.0), 1.0)
+        self.cluster_dynamic_quality_high = min(max(float(cluster_dynamic_quality_high), -1.0), 1.0)
+        if self.cluster_dynamic_quality_high < self.cluster_dynamic_quality_low:
+            self.cluster_dynamic_quality_high = self.cluster_dynamic_quality_low
+        self.cluster_dynamic_quality_step = min(max(float(cluster_dynamic_quality_step), 0.01), 0.50)
+        self.cluster_dynamic_min_threshold = max(0.1, float(cluster_dynamic_min_threshold))
+        self.cluster_dynamic_max_threshold = max(
+            self.cluster_dynamic_min_threshold,
+            float(cluster_dynamic_max_threshold),
+        )
+        self.cluster_local_winrate_threshold = min(max(float(cluster_local_winrate_threshold), 0.50), 0.99)
+        self.cluster_local_min_support = max(1, int(cluster_local_min_support))
+        self.cluster_local_distance_quantile = min(max(float(cluster_local_distance_quantile), 0.01), 0.99)
+        self.cluster_distance_history_cap = max(10, int(cluster_distance_history_cap))
+        self._dynamic_threshold_current = float(self.distance_threshold)
+        self._dynamic_threshold_last_full_sequences = 0
+        self._dynamic_kdist_mean = 0.0
+        self._dynamic_kdist_std = 0.0
+        self._dynamic_kdist_elbow = float(self.distance_threshold)
+        self._dynamic_silhouette = 0.0
+        self._dynamic_quality_adjustment = 1.0
         self._rolling_tokens: deque[str] = deque(maxlen=self.sequence_len)
         self._snapshot_by_minute: dict[str, dict[str, object]] = {}
 
@@ -1085,12 +1127,151 @@ class SymbolicPatternTracker:
         return min(1.0, max(0.0, float(n) / float(target)))
 
     def _effective_distance_threshold(self) -> float:
+        if self.cluster_dynamic_threshold_enabled:
+            return float(
+                min(
+                    max(self._dynamic_threshold_current, self.cluster_dynamic_min_threshold),
+                    self.cluster_dynamic_max_threshold,
+                )
+            )
         if not self.cluster_adaptive_enabled:
             return float(self.distance_threshold)
         s = self._adaptive_progress()
         loose = max(0.1, float(self.cluster_adaptive_distance_loose))
         strict = max(0.1, float(self.distance_threshold))
         return float(loose + ((strict - loose) * s))
+
+    @staticmethod
+    def _std(values: list[float]) -> float:
+        if len(values) < 2:
+            return 0.0
+        mu = sum(values) / len(values)
+        var = sum((v - mu) ** 2 for v in values) / len(values)
+        return math.sqrt(max(var, 0.0))
+
+    @staticmethod
+    def _quantile(values: list[float], q: float) -> float:
+        if not values:
+            return 0.0
+        ordered = sorted(float(v) for v in values)
+        if len(ordered) == 1:
+            return float(ordered[0])
+        qq = min(max(float(q), 0.0), 1.0)
+        idx = qq * (len(ordered) - 1)
+        lo = int(math.floor(idx))
+        hi = int(math.ceil(idx))
+        if lo == hi:
+            return float(ordered[lo])
+        frac = idx - lo
+        return float(ordered[lo] + (ordered[hi] - ordered[lo]) * frac)
+
+    def _recent_full_sequences(self) -> list[list[str]]:
+        rows: list[list[str]] = []
+        for direction in ("BULL", "BEAR"):
+            for row in self._settled_sequences_by_direction.get(direction, []):
+                seq = [str(x) for x in row.get("seq", [])]
+                if seq:
+                    rows.append(seq)
+        cap = max(1, int(self.cluster_dynamic_window_sequences))
+        return rows[-cap:]
+
+    def _k_distance_values(self, sequences: list[list[str]], k: int) -> list[float]:
+        k_eff = max(1, int(k))
+        n = len(sequences)
+        if n <= (k_eff + 1):
+            return []
+        values: list[float] = []
+        for i, seq in enumerate(sequences):
+            distances: list[float] = []
+            for j, other in enumerate(sequences):
+                if i == j:
+                    continue
+                distances.append(self._weighted_distance(seq, other))
+            distances.sort()
+            if len(distances) >= k_eff:
+                values.append(float(distances[k_eff - 1]))
+        return values
+
+    @staticmethod
+    def _elbow_from_sorted_distances(sorted_values: list[float]) -> float:
+        if not sorted_values:
+            return 0.0
+        if len(sorted_values) <= 2:
+            return float(sorted_values[-1])
+        best_idx = len(sorted_values) - 1
+        best_jump = float("-inf")
+        for i in range(1, len(sorted_values)):
+            jump = float(sorted_values[i] - sorted_values[i - 1])
+            if jump > best_jump:
+                best_jump = jump
+                best_idx = i
+        return float(sorted_values[best_idx])
+
+    def _silhouette_like_score(self, sequences: list[list[str]]) -> float:
+        if len(sequences) < 3 or len(self._clusters) < 2:
+            return 0.0
+        scores: list[float] = []
+        for seq in sequences:
+            best_same: float | None = None
+            best_other: float | None = None
+            for cluster in self._clusters.values():
+                exemplar = [str(x) for x in cluster.get("exemplar", [])]
+                if not exemplar:
+                    continue
+                d = self._weighted_distance(seq, exemplar)
+                if best_same is None or d < best_same:
+                    best_other = best_same
+                    best_same = d
+                elif best_other is None or d < best_other:
+                    best_other = d
+            if best_same is None or best_other is None:
+                continue
+            denom = max(best_same, best_other, 1e-9)
+            scores.append((best_other - best_same) / denom)
+        if not scores:
+            return 0.0
+        return float(sum(scores) / len(scores))
+
+    def _recalibrate_dynamic_threshold_if_needed(self) -> None:
+        if not self.cluster_dynamic_threshold_enabled:
+            return
+        n = max(0, int(self._full_sequences))
+        interval = max(1, int(self.cluster_dynamic_recalibration_interval))
+        if self._dynamic_threshold_last_full_sequences > 0 and (n - self._dynamic_threshold_last_full_sequences) < interval:
+            return
+
+        sequences = self._recent_full_sequences()
+        k_distances = self._k_distance_values(sequences=sequences, k=self.cluster_dynamic_k)
+        if not k_distances:
+            self._dynamic_threshold_last_full_sequences = n
+            return
+
+        sorted_k = sorted(float(x) for x in k_distances)
+        mu = float(sum(sorted_k) / len(sorted_k))
+        sigma = float(self._std(sorted_k))
+        elbow = float(self._elbow_from_sorted_distances(sorted_k))
+        base_std_threshold = (mu + (self.cluster_dynamic_z_multiplier * sigma))
+        base = ((base_std_threshold + elbow) / 2.0) * self.cluster_dynamic_sharpness
+
+        silhouette = self._silhouette_like_score(sequences)
+        quality_adjustment = 1.0
+        if silhouette < self.cluster_dynamic_quality_low:
+            quality_adjustment = 1.0 - self.cluster_dynamic_quality_step
+        elif silhouette > self.cluster_dynamic_quality_high:
+            quality_adjustment = 1.0 + (self.cluster_dynamic_quality_step * 0.5)
+        threshold = base * quality_adjustment
+        threshold = min(
+            max(float(threshold), self.cluster_dynamic_min_threshold),
+            self.cluster_dynamic_max_threshold,
+        )
+
+        self._dynamic_kdist_mean = mu
+        self._dynamic_kdist_std = sigma
+        self._dynamic_kdist_elbow = elbow
+        self._dynamic_silhouette = silhouette
+        self._dynamic_quality_adjustment = float(quality_adjustment)
+        self._dynamic_threshold_current = float(threshold)
+        self._dynamic_threshold_last_full_sequences = n
 
     def _effective_rarity_z_threshold(self) -> float:
         if not self.cluster_adaptive_enabled:
@@ -1583,6 +1764,7 @@ class SymbolicPatternTracker:
             should_rebuild_hdbscan = len(rows) <= self.hdbscan_rebuild_interval or (len(rows) % self.hdbscan_rebuild_interval == 0)
             if should_rebuild_hdbscan:
                 self._rebuild_direction_hdbscan(direction)
+        self._recalibrate_dynamic_threshold_if_needed()
 
     def _tree_signal_from_current_window(self, seq: list[str], predicted_direction: str) -> dict[str, object] | None:
         root = self._tree_by_direction.get(str(predicted_direction))
@@ -1658,6 +1840,10 @@ class SymbolicPatternTracker:
     def _effective_threshold_for_cluster(self, cluster: dict[str, object]) -> float:
         support, winrate = self._cluster_support_winrate(cluster)
         threshold = self._effective_distance_threshold()
+        distance_history = [float(x) for x in cluster.get("distance_history", []) if isinstance(x, (int, float))]
+        if support >= self.cluster_local_min_support and winrate >= self.cluster_local_winrate_threshold and distance_history:
+            local_threshold = self._quantile(distance_history, self.cluster_local_distance_quantile)
+            threshold = min(float(threshold), max(0.1, float(local_threshold)))
         if support >= self.purity_split_min_support and winrate >= self.purity_split_winrate_threshold:
             threshold *= self.purity_split_tighten_factor
         return max(0.1, float(threshold))
@@ -1729,9 +1915,18 @@ class SymbolicPatternTracker:
                 "exemplar": list(seq),
                 "wins": 0,
                 "losses": 0,
+                "distance_history": [],
             }
             self._clusters[cluster_id] = cluster
             distance = 0.0
+
+        if distance is not None:
+            history = [float(x) for x in cluster.get("distance_history", []) if isinstance(x, (int, float))]
+            history.append(float(distance))
+            cap = max(10, int(self.cluster_distance_history_cap))
+            if len(history) > cap:
+                history = history[-cap:]
+            cluster["distance_history"] = history
 
         if is_win:
             cluster["wins"] = int(cluster.get("wins", 0)) + 1
@@ -1984,6 +2179,28 @@ class SymbolicPatternTracker:
             "cluster_adaptive_distance_loose": self.cluster_adaptive_distance_loose,
             "cluster_adaptive_rarity_z_loose": self.cluster_adaptive_rarity_z_loose,
             "cluster_adaptive_min_samples_loose": self.cluster_adaptive_min_samples_loose,
+            "cluster_dynamic_threshold_enabled": self.cluster_dynamic_threshold_enabled,
+            "cluster_dynamic_recalibration_interval": self.cluster_dynamic_recalibration_interval,
+            "cluster_dynamic_window_sequences": self.cluster_dynamic_window_sequences,
+            "cluster_dynamic_k": self.cluster_dynamic_k,
+            "cluster_dynamic_z_multiplier": self.cluster_dynamic_z_multiplier,
+            "cluster_dynamic_sharpness": self.cluster_dynamic_sharpness,
+            "cluster_dynamic_quality_low": self.cluster_dynamic_quality_low,
+            "cluster_dynamic_quality_high": self.cluster_dynamic_quality_high,
+            "cluster_dynamic_quality_step": self.cluster_dynamic_quality_step,
+            "cluster_dynamic_min_threshold": self.cluster_dynamic_min_threshold,
+            "cluster_dynamic_max_threshold": self.cluster_dynamic_max_threshold,
+            "cluster_local_winrate_threshold": self.cluster_local_winrate_threshold,
+            "cluster_local_min_support": self.cluster_local_min_support,
+            "cluster_local_distance_quantile": self.cluster_local_distance_quantile,
+            "cluster_distance_history_cap": self.cluster_distance_history_cap,
+            "dynamic_threshold_current": self._dynamic_threshold_current,
+            "dynamic_threshold_last_full_sequences": self._dynamic_threshold_last_full_sequences,
+            "dynamic_kdist_mean": self._dynamic_kdist_mean,
+            "dynamic_kdist_std": self._dynamic_kdist_std,
+            "dynamic_kdist_elbow": self._dynamic_kdist_elbow,
+            "dynamic_silhouette": self._dynamic_silhouette,
+            "dynamic_quality_adjustment": self._dynamic_quality_adjustment,
             "edge_winrate_threshold": self.edge_winrate_threshold,
             "purity_split_winrate_threshold": self.purity_split_winrate_threshold,
             "purity_split_min_support": self.purity_split_min_support,
@@ -2056,6 +2273,21 @@ class SymbolicPatternTracker:
             cluster_adaptive_distance_loose=float(state.get("cluster_adaptive_distance_loose", 18.0)),
             cluster_adaptive_rarity_z_loose=float(state.get("cluster_adaptive_rarity_z_loose", 1.8)),
             cluster_adaptive_min_samples_loose=int(state.get("cluster_adaptive_min_samples_loose", 5)),
+            cluster_dynamic_threshold_enabled=bool(state.get("cluster_dynamic_threshold_enabled", True)),
+            cluster_dynamic_recalibration_interval=int(state.get("cluster_dynamic_recalibration_interval", 100)),
+            cluster_dynamic_window_sequences=int(state.get("cluster_dynamic_window_sequences", 1000)),
+            cluster_dynamic_k=int(state.get("cluster_dynamic_k", 4)),
+            cluster_dynamic_z_multiplier=float(state.get("cluster_dynamic_z_multiplier", -0.5)),
+            cluster_dynamic_sharpness=float(state.get("cluster_dynamic_sharpness", 0.70)),
+            cluster_dynamic_quality_low=float(state.get("cluster_dynamic_quality_low", 0.20)),
+            cluster_dynamic_quality_high=float(state.get("cluster_dynamic_quality_high", 0.55)),
+            cluster_dynamic_quality_step=float(state.get("cluster_dynamic_quality_step", 0.10)),
+            cluster_dynamic_min_threshold=float(state.get("cluster_dynamic_min_threshold", 0.1)),
+            cluster_dynamic_max_threshold=float(state.get("cluster_dynamic_max_threshold", 250.0)),
+            cluster_local_winrate_threshold=float(state.get("cluster_local_winrate_threshold", 0.85)),
+            cluster_local_min_support=int(state.get("cluster_local_min_support", 20)),
+            cluster_local_distance_quantile=float(state.get("cluster_local_distance_quantile", 0.30)),
+            cluster_distance_history_cap=int(state.get("cluster_distance_history_cap", 200)),
             edge_winrate_threshold=float(state.get("edge_winrate_threshold", 0.60)),
             purity_split_winrate_threshold=float(state.get("purity_split_winrate_threshold", 0.75)),
             purity_split_min_support=int(state.get("purity_split_min_support", 30)),
@@ -2113,9 +2345,25 @@ class SymbolicPatternTracker:
                 "exemplar": [str(x) for x in row.get("exemplar", [])],
                 "wins": int(row.get("wins", 0)),
                 "losses": int(row.get("losses", 0)),
+                "distance_history": [
+                    float(x)
+                    for x in row.get("distance_history", [])
+                    if isinstance(x, (int, float))
+                ],
             }
             for i, row in enumerate(state.get("clusters", []))
         }
+        obj._dynamic_threshold_current = float(state.get("dynamic_threshold_current", obj._dynamic_threshold_current))
+        obj._dynamic_threshold_last_full_sequences = int(
+            state.get("dynamic_threshold_last_full_sequences", obj._dynamic_threshold_last_full_sequences)
+        )
+        obj._dynamic_kdist_mean = float(state.get("dynamic_kdist_mean", obj._dynamic_kdist_mean))
+        obj._dynamic_kdist_std = float(state.get("dynamic_kdist_std", obj._dynamic_kdist_std))
+        obj._dynamic_kdist_elbow = float(state.get("dynamic_kdist_elbow", obj._dynamic_kdist_elbow))
+        obj._dynamic_silhouette = float(state.get("dynamic_silhouette", obj._dynamic_silhouette))
+        obj._dynamic_quality_adjustment = float(
+            state.get("dynamic_quality_adjustment", obj._dynamic_quality_adjustment)
+        )
         obj._next_cluster_id = int(state.get("next_cluster_id", len(obj._clusters) + 1))
         raw_settled = state.get("settled_sequences_by_direction", {})
         if isinstance(raw_settled, dict):
@@ -2200,6 +2448,21 @@ class OBLMEngine:
         cluster_adaptive_distance_loose: float = 18.0,
         cluster_adaptive_rarity_z_loose: float = 1.8,
         cluster_adaptive_min_samples_loose: int = 5,
+        cluster_dynamic_threshold_enabled: bool = True,
+        cluster_dynamic_recalibration_interval: int = 100,
+        cluster_dynamic_window_sequences: int = 1000,
+        cluster_dynamic_k: int = 4,
+        cluster_dynamic_z_multiplier: float = -0.5,
+        cluster_dynamic_sharpness: float = 0.70,
+        cluster_dynamic_quality_low: float = 0.20,
+        cluster_dynamic_quality_high: float = 0.55,
+        cluster_dynamic_quality_step: float = 0.10,
+        cluster_dynamic_min_threshold: float = 0.1,
+        cluster_dynamic_max_threshold: float = 250.0,
+        cluster_local_winrate_threshold: float = 0.85,
+        cluster_local_min_support: int = 20,
+        cluster_local_distance_quantile: float = 0.30,
+        cluster_distance_history_cap: int = 200,
     ):
         self._quantizer = quantizer or AdaptiveQuantizer(rolling_window=10080)
         self._model = model or IncrementalOBLMModel()
@@ -2233,6 +2496,21 @@ class OBLMEngine:
             cluster_adaptive_distance_loose=cluster_adaptive_distance_loose,
             cluster_adaptive_rarity_z_loose=cluster_adaptive_rarity_z_loose,
             cluster_adaptive_min_samples_loose=cluster_adaptive_min_samples_loose,
+            cluster_dynamic_threshold_enabled=cluster_dynamic_threshold_enabled,
+            cluster_dynamic_recalibration_interval=cluster_dynamic_recalibration_interval,
+            cluster_dynamic_window_sequences=cluster_dynamic_window_sequences,
+            cluster_dynamic_k=cluster_dynamic_k,
+            cluster_dynamic_z_multiplier=cluster_dynamic_z_multiplier,
+            cluster_dynamic_sharpness=cluster_dynamic_sharpness,
+            cluster_dynamic_quality_low=cluster_dynamic_quality_low,
+            cluster_dynamic_quality_high=cluster_dynamic_quality_high,
+            cluster_dynamic_quality_step=cluster_dynamic_quality_step,
+            cluster_dynamic_min_threshold=cluster_dynamic_min_threshold,
+            cluster_dynamic_max_threshold=cluster_dynamic_max_threshold,
+            cluster_local_winrate_threshold=cluster_local_winrate_threshold,
+            cluster_local_min_support=cluster_local_min_support,
+            cluster_local_distance_quantile=cluster_local_distance_quantile,
+            cluster_distance_history_cap=cluster_distance_history_cap,
         )
         self._holding_minutes = max(1, int(holding_minutes))
         self._fuzzy_bias_weight = min(max(float(fuzzy_bias_weight), 0.0), 1.0)
@@ -2786,6 +3064,21 @@ async def run_oblm_training(
     cluster_adaptive_distance_loose: float = 18.0,
     cluster_adaptive_rarity_z_loose: float = 1.8,
     cluster_adaptive_min_samples_loose: int = 5,
+    cluster_dynamic_threshold_enabled: bool = True,
+    cluster_dynamic_recalibration_interval: int = 100,
+    cluster_dynamic_window_sequences: int = 1000,
+    cluster_dynamic_k: int = 4,
+    cluster_dynamic_z_multiplier: float = -0.5,
+    cluster_dynamic_sharpness: float = 0.70,
+    cluster_dynamic_quality_low: float = 0.20,
+    cluster_dynamic_quality_high: float = 0.55,
+    cluster_dynamic_quality_step: float = 0.10,
+    cluster_dynamic_min_threshold: float = 0.1,
+    cluster_dynamic_max_threshold: float = 250.0,
+    cluster_local_winrate_threshold: float = 0.85,
+    cluster_local_min_support: int = 20,
+    cluster_local_distance_quantile: float = 0.30,
+    cluster_distance_history_cap: int = 200,
     decision_log_path: str = "logs/oblm/decisions.log",
     decision_log_max_bytes: int = 2_000_000,
     decision_log_backup_count: int = 5,
@@ -2801,6 +3094,11 @@ async def run_oblm_training(
     min_total_for_log: int = 100,
     prefill_candles_path: str = "",
     prefill_limit: int = 10080,
+    ws_base_url: str = "wss://stream.binance.com:9443/ws",
+    ws_open_timeout_seconds: float = 20.0,
+    ws_ping_interval_seconds: float = 20.0,
+    ws_ping_timeout_seconds: float = 40.0,
+    ws_message_timeout_seconds: float = 90.0,
 ) -> None:
     decision_logger = _configure_decision_log_file(
         decision_log_path=decision_log_path,
@@ -2880,6 +3178,29 @@ async def run_oblm_training(
             engine._pattern_tracker.cluster_adaptive_distance_loose = max(0.1, float(cluster_adaptive_distance_loose))
             engine._pattern_tracker.cluster_adaptive_rarity_z_loose = max(0.1, float(cluster_adaptive_rarity_z_loose))
             engine._pattern_tracker.cluster_adaptive_min_samples_loose = max(1, int(cluster_adaptive_min_samples_loose))
+            engine._pattern_tracker.cluster_dynamic_threshold_enabled = bool(cluster_dynamic_threshold_enabled)
+            engine._pattern_tracker.cluster_dynamic_recalibration_interval = max(1, int(cluster_dynamic_recalibration_interval))
+            engine._pattern_tracker.cluster_dynamic_window_sequences = max(50, int(cluster_dynamic_window_sequences))
+            engine._pattern_tracker.cluster_dynamic_k = max(1, int(cluster_dynamic_k))
+            engine._pattern_tracker.cluster_dynamic_z_multiplier = float(cluster_dynamic_z_multiplier)
+            engine._pattern_tracker.cluster_dynamic_sharpness = min(max(float(cluster_dynamic_sharpness), 0.1), 2.0)
+            engine._pattern_tracker.cluster_dynamic_quality_low = min(max(float(cluster_dynamic_quality_low), -1.0), 1.0)
+            engine._pattern_tracker.cluster_dynamic_quality_high = min(max(float(cluster_dynamic_quality_high), -1.0), 1.0)
+            if engine._pattern_tracker.cluster_dynamic_quality_high < engine._pattern_tracker.cluster_dynamic_quality_low:
+                engine._pattern_tracker.cluster_dynamic_quality_high = engine._pattern_tracker.cluster_dynamic_quality_low
+            engine._pattern_tracker.cluster_dynamic_quality_step = min(max(float(cluster_dynamic_quality_step), 0.01), 0.50)
+            engine._pattern_tracker.cluster_dynamic_min_threshold = max(0.1, float(cluster_dynamic_min_threshold))
+            engine._pattern_tracker.cluster_dynamic_max_threshold = max(
+                engine._pattern_tracker.cluster_dynamic_min_threshold,
+                float(cluster_dynamic_max_threshold),
+            )
+            engine._pattern_tracker.cluster_local_winrate_threshold = min(
+                max(float(cluster_local_winrate_threshold), 0.50),
+                0.99,
+            )
+            engine._pattern_tracker.cluster_local_min_support = max(1, int(cluster_local_min_support))
+            engine._pattern_tracker.cluster_local_distance_quantile = min(max(float(cluster_local_distance_quantile), 0.01), 0.99)
+            engine._pattern_tracker.cluster_distance_history_cap = max(10, int(cluster_distance_history_cap))
             engine._last_warmup_remaining = max(0, engine._warmup_candles - int(engine._candles_seen))
             logger.info("Loaded existing OBLM model from %s", checkpoint)
         except Exception as exc:
@@ -2922,6 +3243,21 @@ async def run_oblm_training(
                 cluster_adaptive_distance_loose=cluster_adaptive_distance_loose,
                 cluster_adaptive_rarity_z_loose=cluster_adaptive_rarity_z_loose,
                 cluster_adaptive_min_samples_loose=cluster_adaptive_min_samples_loose,
+                cluster_dynamic_threshold_enabled=cluster_dynamic_threshold_enabled,
+                cluster_dynamic_recalibration_interval=cluster_dynamic_recalibration_interval,
+                cluster_dynamic_window_sequences=cluster_dynamic_window_sequences,
+                cluster_dynamic_k=cluster_dynamic_k,
+                cluster_dynamic_z_multiplier=cluster_dynamic_z_multiplier,
+                cluster_dynamic_sharpness=cluster_dynamic_sharpness,
+                cluster_dynamic_quality_low=cluster_dynamic_quality_low,
+                cluster_dynamic_quality_high=cluster_dynamic_quality_high,
+                cluster_dynamic_quality_step=cluster_dynamic_quality_step,
+                cluster_dynamic_min_threshold=cluster_dynamic_min_threshold,
+                cluster_dynamic_max_threshold=cluster_dynamic_max_threshold,
+                cluster_local_winrate_threshold=cluster_local_winrate_threshold,
+                cluster_local_min_support=cluster_local_min_support,
+                cluster_local_distance_quantile=cluster_local_distance_quantile,
+                cluster_distance_history_cap=cluster_distance_history_cap,
             )
     else:
         engine = OBLMEngine(
@@ -2962,6 +3298,21 @@ async def run_oblm_training(
             cluster_adaptive_distance_loose=cluster_adaptive_distance_loose,
             cluster_adaptive_rarity_z_loose=cluster_adaptive_rarity_z_loose,
             cluster_adaptive_min_samples_loose=cluster_adaptive_min_samples_loose,
+            cluster_dynamic_threshold_enabled=cluster_dynamic_threshold_enabled,
+            cluster_dynamic_recalibration_interval=cluster_dynamic_recalibration_interval,
+            cluster_dynamic_window_sequences=cluster_dynamic_window_sequences,
+            cluster_dynamic_k=cluster_dynamic_k,
+            cluster_dynamic_z_multiplier=cluster_dynamic_z_multiplier,
+            cluster_dynamic_sharpness=cluster_dynamic_sharpness,
+            cluster_dynamic_quality_low=cluster_dynamic_quality_low,
+            cluster_dynamic_quality_high=cluster_dynamic_quality_high,
+            cluster_dynamic_quality_step=cluster_dynamic_quality_step,
+            cluster_dynamic_min_threshold=cluster_dynamic_min_threshold,
+            cluster_dynamic_max_threshold=cluster_dynamic_max_threshold,
+            cluster_local_winrate_threshold=cluster_local_winrate_threshold,
+            cluster_local_min_support=cluster_local_min_support,
+            cluster_local_distance_quantile=cluster_local_distance_quantile,
+            cluster_distance_history_cap=cluster_distance_history_cap,
         )
 
     if prefill_candles_path:
@@ -3238,6 +3589,11 @@ async def run_oblm_training(
     pipeline = BinanceMarketDataPipeline(
         symbol=symbol,
         on_market_state=on_market_state,
+        ws_base_url=ws_base_url,
+        ws_open_timeout_seconds=ws_open_timeout_seconds,
+        ws_ping_interval_seconds=ws_ping_interval_seconds,
+        ws_ping_timeout_seconds=ws_ping_timeout_seconds,
+        ws_message_timeout_seconds=ws_message_timeout_seconds,
     )
     stop_event = asyncio.Event()
 
@@ -3327,11 +3683,19 @@ class BinanceMarketDataPipeline:
         on_market_state: Callable[[MarketState], Awaitable[None]],
         depth_levels: int = 20,
         ws_base_url: str = "wss://stream.binance.com:9443/ws",
+        ws_open_timeout_seconds: float = 20.0,
+        ws_ping_interval_seconds: float = 20.0,
+        ws_ping_timeout_seconds: float = 40.0,
+        ws_message_timeout_seconds: float = 90.0,
     ):
         self._symbol = symbol.lower()
         self._on_market_state = on_market_state
         self._depth_levels = depth_levels
         self._ws_base = ws_base_url.rstrip("/")
+        self._ws_open_timeout_seconds = max(5.0, float(ws_open_timeout_seconds))
+        self._ws_ping_interval_seconds = max(5.0, float(ws_ping_interval_seconds))
+        self._ws_ping_timeout_seconds = max(5.0, float(ws_ping_timeout_seconds))
+        self._ws_message_timeout_seconds = max(15.0, float(ws_message_timeout_seconds))
         self._sync = MinuteMarketStateSynchronizer()
         self._running = False
         self._tasks: list[asyncio.Task] = []
@@ -3375,12 +3739,45 @@ class BinanceMarketDataPipeline:
     ) -> None:
         if websockets is None:
             raise RuntimeError("websockets package is required for live OBLM pipeline")
+        stream_name = "depth" if "@depth" in url else "kline"
         backoff = 1.0
+        attempt = 0
         while self._running:
+            attempt += 1
             try:
-                async with websockets.connect(url, ping_interval=20, ping_timeout=20) as ws:
+                logger.info(
+                    "WebSocket connecting stream=%s attempt=%d url=%s open_timeout=%.1fs ping_interval=%.1fs ping_timeout=%.1fs message_timeout=%.1fs",
+                    stream_name,
+                    attempt,
+                    url,
+                    self._ws_open_timeout_seconds,
+                    self._ws_ping_interval_seconds,
+                    self._ws_ping_timeout_seconds,
+                    self._ws_message_timeout_seconds,
+                )
+                async with websockets.connect(
+                    url,
+                    open_timeout=self._ws_open_timeout_seconds,
+                    ping_interval=self._ws_ping_interval_seconds,
+                    ping_timeout=self._ws_ping_timeout_seconds,
+                    close_timeout=10,
+                ) as ws:
+                    logger.info("WebSocket connected stream=%s url=%s", stream_name, url)
                     backoff = 1.0
-                    async for payload in ws:
+                    while self._running:
+                        try:
+                            payload = await asyncio.wait_for(
+                                ws.recv(),
+                                timeout=self._ws_message_timeout_seconds,
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "WebSocket message timeout stream=%s url=%s timeout=%.1fs; reconnecting",
+                                stream_name,
+                                url,
+                                self._ws_message_timeout_seconds,
+                            )
+                            break
                         if not self._running:
                             break
                         message = json.loads(payload)
@@ -3388,9 +3785,16 @@ class BinanceMarketDataPipeline:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning("WebSocket loop error (%s): %s", url, exc)
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2.0, 30.0)
+                logger.warning("WebSocket loop error stream=%s (%s): %s", stream_name, url, exc)
+            if not self._running:
+                break
+            logger.info(
+                "WebSocket reconnect scheduled stream=%s in %.1fs",
+                stream_name,
+                backoff,
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2.0, 30.0)
 
     async def _handle_depth_message(self, message: dict) -> None:
         raw_bids = message.get("b") or message.get("bids") or []
@@ -3653,6 +4057,96 @@ def _parse_oblm_args() -> argparse.Namespace:
         default=5,
         help="Loose starting min-cluster-samples used at low settled sample counts",
     )
+    parser.add_argument(
+        "--cluster-dynamic-threshold-enabled",
+        type=_parse_bool,
+        default=True,
+        help="Enable data-driven dynamic distance threshold calibration",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-recalibration-interval",
+        type=int,
+        default=100,
+        help="Recalibrate dynamic threshold every N full settled sequences",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-window-sequences",
+        type=int,
+        default=1000,
+        help="Maximum recent settled sequences used during dynamic threshold calibration",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-k",
+        type=int,
+        default=4,
+        help="k used for k-distance elbow discovery",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-z-multiplier",
+        type=float,
+        default=-0.5,
+        help="z-multiplier applied in mean + z*std threshold estimate",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-sharpness",
+        type=float,
+        default=0.70,
+        help="Global sharpness multiplier for dynamic threshold",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-quality-low",
+        type=float,
+        default=0.20,
+        help="If silhouette-like score is below this, tighten threshold",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-quality-high",
+        type=float,
+        default=0.55,
+        help="If silhouette-like score is above this, loosen threshold slightly",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-quality-step",
+        type=float,
+        default=0.10,
+        help="Adjustment step used by quality feedback loop",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-min-threshold",
+        type=float,
+        default=0.1,
+        help="Lower clamp for dynamic threshold",
+    )
+    parser.add_argument(
+        "--cluster-dynamic-max-threshold",
+        type=float,
+        default=250.0,
+        help="Upper clamp for dynamic threshold",
+    )
+    parser.add_argument(
+        "--cluster-local-winrate-threshold",
+        type=float,
+        default=0.85,
+        help="Clusters above this winrate can use local tighter threshold",
+    )
+    parser.add_argument(
+        "--cluster-local-min-support",
+        type=int,
+        default=20,
+        help="Minimum support needed before local threshold tightening is active",
+    )
+    parser.add_argument(
+        "--cluster-local-distance-quantile",
+        type=float,
+        default=0.30,
+        help="Quantile of cluster distance history used for local threshold",
+    )
+    parser.add_argument(
+        "--cluster-distance-history-cap",
+        type=int,
+        default=200,
+        help="Maximum stored distance observations per cluster",
+    )
     parser.add_argument("--decision-log-path", default="logs/oblm/decisions.log", help="Decision log path")
     parser.add_argument("--decision-log-max-bytes", type=int, default=2_000_000, help="Decision log max bytes")
     parser.add_argument("--decision-log-backup-count", type=int, default=5, help="Decision log backups")
@@ -3681,6 +4175,35 @@ def _parse_oblm_args() -> argparse.Namespace:
         type=int,
         default=10080,
         help="Maximum number of candles loaded from prefill source",
+    )
+    parser.add_argument(
+        "--ws-base-url",
+        default="wss://stream.binance.com:9443/ws",
+        help="Binance websocket base URL",
+    )
+    parser.add_argument(
+        "--ws-open-timeout-seconds",
+        type=float,
+        default=20.0,
+        help="Websocket connect/open timeout in seconds",
+    )
+    parser.add_argument(
+        "--ws-ping-interval-seconds",
+        type=float,
+        default=20.0,
+        help="Websocket ping interval in seconds",
+    )
+    parser.add_argument(
+        "--ws-ping-timeout-seconds",
+        type=float,
+        default=40.0,
+        help="Websocket ping timeout in seconds",
+    )
+    parser.add_argument(
+        "--ws-message-timeout-seconds",
+        type=float,
+        default=90.0,
+        help="Max seconds to wait for next websocket message before reconnect",
     )
     return parser.parse_args()
 
@@ -3740,6 +4263,21 @@ def main() -> None:
             cluster_adaptive_distance_loose=args.cluster_adaptive_distance_loose,
             cluster_adaptive_rarity_z_loose=args.cluster_adaptive_rarity_z_loose,
             cluster_adaptive_min_samples_loose=args.cluster_adaptive_min_samples_loose,
+            cluster_dynamic_threshold_enabled=args.cluster_dynamic_threshold_enabled,
+            cluster_dynamic_recalibration_interval=args.cluster_dynamic_recalibration_interval,
+            cluster_dynamic_window_sequences=args.cluster_dynamic_window_sequences,
+            cluster_dynamic_k=args.cluster_dynamic_k,
+            cluster_dynamic_z_multiplier=args.cluster_dynamic_z_multiplier,
+            cluster_dynamic_sharpness=args.cluster_dynamic_sharpness,
+            cluster_dynamic_quality_low=args.cluster_dynamic_quality_low,
+            cluster_dynamic_quality_high=args.cluster_dynamic_quality_high,
+            cluster_dynamic_quality_step=args.cluster_dynamic_quality_step,
+            cluster_dynamic_min_threshold=args.cluster_dynamic_min_threshold,
+            cluster_dynamic_max_threshold=args.cluster_dynamic_max_threshold,
+            cluster_local_winrate_threshold=args.cluster_local_winrate_threshold,
+            cluster_local_min_support=args.cluster_local_min_support,
+            cluster_local_distance_quantile=args.cluster_local_distance_quantile,
+            cluster_distance_history_cap=args.cluster_distance_history_cap,
             decision_log_path=args.decision_log_path,
             decision_log_max_bytes=args.decision_log_max_bytes,
             decision_log_backup_count=args.decision_log_backup_count,
@@ -3755,6 +4293,11 @@ def main() -> None:
             min_total_for_log=args.min_total_for_log,
             prefill_candles_path=args.prefill_candles_path,
             prefill_limit=args.prefill_limit,
+            ws_base_url=args.ws_base_url,
+            ws_open_timeout_seconds=args.ws_open_timeout_seconds,
+            ws_ping_interval_seconds=args.ws_ping_interval_seconds,
+            ws_ping_timeout_seconds=args.ws_ping_timeout_seconds,
+            ws_message_timeout_seconds=args.ws_message_timeout_seconds,
         )
     )
 
