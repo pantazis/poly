@@ -371,10 +371,12 @@ class MessageFormatter:
         
         # Add emoji based on total PnL
         pnl_emoji = "🟢" if total_pnl >= 0 else "🔴"
+        result_label = "WIN" if total_pnl >= 0 else "LOSE"
         
         return (
             f"{mode} 💰 *Trade Closed* {pnl_emoji}\n\n"
             f"*Trade ID:* `{escaped_trade_id}`\n\n"
+            f"*Result:* {MessageFormatter.escape_markdown(result_label)}\n"
             f"{reference_lines if reference_lines else ''}"
             f"*PnL Breakdown:*\n"
             f"• Polymarket: {poly_pnl_str}\n"

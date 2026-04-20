@@ -81,6 +81,11 @@ operational:
   # WARNING: Setting to false will execute real trades with real money!
   dry_run: true
 
+  # Training mode hard safety switch.
+  # When true, bot is forced into dry_run and DOES NOT use live Polymarket API data.
+  # Value can be controlled from .env via TRAINING_MODE.
+  training_mode: "${TRAINING_MODE}"
+
   # While in dry run, use live read-only Polymarket market data for pricing
   # and market discovery, but never submit real Polymarket or Binance orders.
   polymarket_live_data_in_dry_run: true

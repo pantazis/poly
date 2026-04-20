@@ -64,6 +64,7 @@ class TradingConfig:
     
     # Operational
     dry_run: bool = True
+    training_mode: bool = False
     polymarket_live_data_in_dry_run: bool = True
     binance_live_data_in_dry_run: bool = True
     log_dir: Path = field(default_factory=lambda: Path("./logs"))
@@ -102,6 +103,24 @@ class ConfigManager:
         if isinstance(value, str):
             return ConfigManager._substitute_env_vars(value)
         return value
+
+    @staticmethod
+    def _to_bool(value) -> bool:
+        """Convert common bool-like values reliably.
+
+        Accepts bool, int/float, and strings like true/false/1/0/yes/no/on/off.
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "n", "off", ""}:
+                return False
+        return bool(value)
     
     @staticmethod
     def load(config_path: Path) -> TradingConfig:
@@ -158,7 +177,7 @@ class ConfigManager:
         # Binance section
         binance = raw_config.get('binance', {})
         if 'hedge_enabled' in binance:
-            config_dict['hedge_enabled'] = bool(binance['hedge_enabled'])
+            config_dict['hedge_enabled'] = ConfigManager._to_bool(binance['hedge_enabled'])
         if 'hedge_leverage' in binance:
             config_dict['hedge_leverage'] = int(binance['hedge_leverage'])
         if 'hedge_size' in binance:
@@ -182,13 +201,15 @@ class ConfigManager:
         # Operational section
         operational = raw_config.get('operational', {})
         if 'dry_run' in operational:
-            config_dict['dry_run'] = bool(operational['dry_run'])
+            config_dict['dry_run'] = ConfigManager._to_bool(operational['dry_run'])
+        if 'training_mode' in operational:
+            config_dict['training_mode'] = ConfigManager._to_bool(operational['training_mode'])
         if 'polymarket_live_data_in_dry_run' in operational:
-            config_dict['polymarket_live_data_in_dry_run'] = bool(
+            config_dict['polymarket_live_data_in_dry_run'] = ConfigManager._to_bool(
                 operational['polymarket_live_data_in_dry_run']
             )
         if 'binance_live_data_in_dry_run' in operational:
-            config_dict['binance_live_data_in_dry_run'] = bool(
+            config_dict['binance_live_data_in_dry_run'] = ConfigManager._to_bool(
                 operational['binance_live_data_in_dry_run']
             )
         if 'log_dir' in operational:
@@ -198,7 +219,7 @@ class ConfigManager:
         # Telegram section
         telegram = raw_config.get('telegram', {})
         if 'enabled' in telegram:
-            config_dict['telegram_enabled'] = bool(telegram['enabled'])
+            config_dict['telegram_enabled'] = ConfigManager._to_bool(telegram['enabled'])
         if 'token' in telegram:
             config_dict['telegram_token'] = ConfigManager._process_value(
                 telegram['token']
@@ -210,6 +231,11 @@ class ConfigManager:
         
         # Create config with defaults for missing values
         config = TradingConfig(**config_dict)
+
+        # Training mode safety: never use Polymarket API and keep simulation mode.
+        if config.training_mode:
+            config.dry_run = True
+            config.polymarket_live_data_in_dry_run = False
         
         # Validate and raise if errors
         errors = ConfigManager.validate(config)

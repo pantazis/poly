@@ -25,6 +25,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+try:
+    import requests
+except ImportError:  # pragma: no cover
+    requests = None  # type: ignore[assignment]
+
 from src.trading.models import PolymarketOrder
 
 logger = logging.getLogger(__name__)
@@ -50,6 +55,10 @@ class PolymarketConnector:
     
     # Market interval in seconds (5 minutes)
     MARKET_INTERVAL_SECONDS = 300
+
+    # Default fee assumption if Gamma fee fields are missing/unavailable.
+    # This is a *placeholder* until you confirm the exact schedule for your account/market.
+    DEFAULT_TAKER_FEE_BPS = 0.0
     
     def __init__(
         self,
@@ -82,6 +91,7 @@ class PolymarketConnector:
         self._current_market_id: str | None = None
         self._current_up_token_id: str | None = None
         self._current_down_token_id: str | None = None
+        self._market_start_timestamp: int = 0
         self._market_expiry_timestamp: int = 0
         
         # Simulated state for dry run mode
@@ -187,15 +197,42 @@ class PolymarketConnector:
             Market slug like "btc-updown-5m-1771168800"
         """
         return f"btc-updown-5m-{timestamp}"
+
+    @staticmethod
+    def _coerce_unix_timestamp_seconds(value: Any) -> int | None:
+        """Coerce common timestamp representations to unix seconds."""
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            raw = float(value)
+            if raw > 10_000_000_000:
+                raw = raw / 1000.0
+            if raw <= 0:
+                return None
+            return int(raw)
+
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.isdigit():
+            return PolymarketConnector._coerce_unix_timestamp_seconds(int(text))
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp())
+        except ValueError:
+            return None
     
-    async def _fetch_market_tokens(self, market_slug: str) -> tuple[str | None, str | None, str | None]:
+    async def _fetch_market_tokens(self, market_slug: str) -> tuple[str | None, str | None, str | None, int | None, int | None]:
         """Fetch market ID and token IDs from Gamma API.
         
         Args:
             market_slug: The market slug (e.g., "btc-updown-5m-1771168800")
             
         Returns:
-            Tuple of (market_id, up_token_id, down_token_id) or (None, None, None) if not found
+            Tuple of (market_id, up_token_id, down_token_id, start_ts, end_ts)
+            or empty values when not found.
         """
         if self._dry_run and not self._should_use_live_market_data():
             # Return simulated token IDs
@@ -203,20 +240,29 @@ class PolymarketConnector:
                 f"sim-market-{market_slug}",
                 f"sim-up-token-{market_slug}",
                 f"sim-down-token-{market_slug}",
+                self._get_current_market_timestamp(),
+                self._get_current_market_timestamp() + self.MARKET_INTERVAL_SECONDS,
             )
         
         session = await self._get_session()
-        if session is None:
+        if session is None and requests is None:
             logger.warning("HTTP session not available")
-            return None, None, None
+            return None, None, None, None, None
         
         try:
             # Query Gamma API for market data
             url = f"{self.GAMMA_API_URL}/events?slug={market_slug}"
             
-            async with session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
+            if session is not None:
+                async with session.get(url, timeout=10) as response:
+                    status = response.status
+                    data = await response.json() if status == 200 else None
+            else:
+                resp = requests.get(url, timeout=10)
+                status = resp.status_code
+                data = resp.json() if status == 200 else None
+
+            if status == 200 and data is not None:
                     
                     if data and len(data) > 0:
                         event = data[0]
@@ -226,28 +272,47 @@ class PolymarketConnector:
                             market = markets[0]
                             market_id = str(market.get("id", ""))
                             
-                            # Get token IDs from clobTokenIds
-                            clob_token_ids = market.get("clobTokenIds", [])
-                            
+                            # Get token IDs from clobTokenIds.
+                            # Gamma sometimes returns this as a JSON-encoded string.
+                            clob_token_ids_raw = market.get("clobTokenIds", [])
+                            if isinstance(clob_token_ids_raw, str):
+                                try:
+                                    clob_token_ids = json.loads(clob_token_ids_raw)
+                                except Exception:
+                                    clob_token_ids = []
+                            else:
+                                clob_token_ids = list(clob_token_ids_raw) if isinstance(clob_token_ids_raw, list) else []
+
                             if len(clob_token_ids) >= 2:
                                 # First token is typically UP/Yes, second is DOWN/No
-                                up_token_id = clob_token_ids[0]
-                                down_token_id = clob_token_ids[1]
+                                up_token_id = str(clob_token_ids[0])
+                                down_token_id = str(clob_token_ids[1])
                                 
                                 logger.info(f"Found market {market_id} for {market_slug}")
                                 logger.debug(f"UP token: {up_token_id[:20]}...")
                                 logger.debug(f"DOWN token: {down_token_id[:20]}...")
                                 
-                                return market_id, up_token_id, down_token_id
+                                start_ts = self._coerce_unix_timestamp_seconds(
+                                    market.get("startDate")
+                                    or event.get("startDate")
+                                )
+                                end_ts = self._coerce_unix_timestamp_seconds(
+                                    market.get("endDate")
+                                    or market.get("endTime")
+                                    or event.get("endDate")
+                                    or event.get("endTime")
+                                )
+
+                                return market_id, up_token_id, down_token_id, start_ts, end_ts
                     
                     logger.warning(f"Market not found for slug: {market_slug}")
-                else:
-                    logger.warning(f"Gamma API returned status {response.status}")
+            else:
+                logger.warning(f"Gamma API returned status {status}")
                     
         except Exception as e:
             logger.error(f"Error fetching market tokens: {e}")
         
-        return None, None, None
+        return None, None, None, None, None
 
     async def _ensure_current_market(self) -> bool:
         """Ensure we have valid token IDs for the current market interval.
@@ -267,13 +332,14 @@ class PolymarketConnector:
             market_slug = self._generate_market_slug(current_timestamp)
             logger.info(f"Fetching market data for: {market_slug}")
             
-            market_id, up_token, down_token = await self._fetch_market_tokens(market_slug)
+            market_id, up_token, down_token, start_ts, end_ts = await self._fetch_market_tokens(market_slug)
             
             if market_id and up_token and down_token:
                 self._current_market_id = market_id
                 self._current_up_token_id = up_token
                 self._current_down_token_id = down_token
-                self._market_expiry_timestamp = current_timestamp + self.MARKET_INTERVAL_SECONDS
+                self._market_start_timestamp = int(start_ts or current_timestamp)
+                self._market_expiry_timestamp = int(end_ts or (current_timestamp + self.MARKET_INTERVAL_SECONDS))
                 
                 logger.info(f"Market ready: {market_id}, expires at {self._market_expiry_timestamp}")
                 return True
@@ -448,6 +514,109 @@ class PolymarketConnector:
                 return log_dry_run_fallback(str(e))
             logger.error(f"Error fetching Polymarket price: {e}")
             return 0.50
+
+    async def get_orderbook(self, outcome: str) -> dict[str, Any] | None:
+        """Fetch orderbook (bids/asks) for the current market token.
+
+        NOTE: Uses public /book endpoint (no auth) and requires token_id.
+        """
+        if outcome not in ("UP", "DOWN"):
+            raise ValueError(f"Invalid outcome: {outcome}. Must be 'UP' or 'DOWN'")
+
+        if not await self._ensure_current_market():
+            return None
+        token_id = self._get_token_id_for_outcome(outcome)
+        if not token_id:
+            return None
+
+        session = await self._get_session()
+        if session is not None:
+            async with session.get(
+                f"{self.CLOB_API_URL}/book",
+                params={"token_id": token_id},
+                timeout=10,
+            ) as response:
+                if response.status != 200:
+                    return None
+                return await response.json()
+
+        # Fallback for environments without aiohttp installed (common in local tooling).
+        if requests is None:
+            return None
+        try:
+            resp = requests.get(
+                f"{self.CLOB_API_URL}/book",
+                params={"token_id": token_id},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return None
+            return resp.json()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _vwap_price(levels: list[dict[str, Any]], shares: float) -> float | None:
+        """Compute VWAP price for buying `shares` from asks or selling into bids."""
+        need = max(float(shares), 0.0)
+        if need <= 0:
+            return None
+        cost = 0.0
+        filled = 0.0
+        for lvl in levels:
+            try:
+                px = float(lvl.get("price", 0.0))
+                sz = float(lvl.get("size", 0.0))
+            except Exception:
+                continue
+            if px <= 0 or sz <= 0:
+                continue
+            take = min(sz, need - filled)
+            cost += take * px
+            filled += take
+            if filled >= need - 1e-12:
+                break
+        if filled <= 0:
+            return None
+        return cost / filled
+
+    async def estimate_entry_cost_usdc(
+        self,
+        outcome: str,
+        usdc_size: float,
+        taker_fee_bps: float | None = None,
+    ) -> dict[str, float] | None:
+        """Estimate Polymarket BTC-5m entry cost for a market BUY.
+
+        Returns a dict with:
+        - entry_price_vwap (share price 0..1)
+        - shares
+        - fee_usdc
+        - total_cost_usdc
+        """
+        book = await self.get_orderbook(outcome)
+        if not book:
+            return None
+        asks = list(book.get("asks", []) or [])
+        best_ask = float(asks[0]["price"]) if asks else None
+        if best_ask is None or best_ask <= 0:
+            return None
+
+        # Approx shares purchased for a USDC notional at current best ask.
+        shares = float(usdc_size) / max(best_ask, 1e-9)
+        vwap = self._vwap_price(asks, shares=shares)
+        if vwap is None:
+            return None
+
+        fee_bps = float(self.DEFAULT_TAKER_FEE_BPS if taker_fee_bps is None else taker_fee_bps)
+        fee_usdc = float(usdc_size) * (fee_bps / 10_000.0)
+        total = float(usdc_size) + fee_usdc
+        return {
+            "entry_price_vwap": float(vwap),
+            "shares": float(shares),
+            "fee_usdc": float(fee_usdc),
+            "total_cost_usdc": float(total),
+        }
 
     async def place_order(
         self,
@@ -801,6 +970,7 @@ class PolymarketConnector:
             "market_id": self._current_market_id,
             "up_token_id": self._current_up_token_id,
             "down_token_id": self._current_down_token_id,
+            "start_timestamp": self._market_start_timestamp,
             "expiry_timestamp": self._market_expiry_timestamp,
             "market_slug": self._generate_market_slug(self._get_current_market_timestamp()),
         }

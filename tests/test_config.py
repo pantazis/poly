@@ -64,6 +64,10 @@ class TestTradingConfigDefaults:
         config = TradingConfig()
         assert config.dry_run is True
 
+    def test_default_training_mode(self):
+        config = TradingConfig()
+        assert config.training_mode is False
+
     def test_default_polymarket_live_data_in_dry_run(self):
         config = TradingConfig()
         assert config.polymarket_live_data_in_dry_run is True
@@ -236,6 +240,7 @@ polymarket:
             "  max_concurrent_positions: 1",
             "operational:",
             "  dry_run: false",
+            "  training_mode: false",
             "  polymarket_live_data_in_dry_run: false",
             "  binance_live_data_in_dry_run: false",
             "  log_dir: \"./custom_logs\"",
@@ -260,9 +265,44 @@ polymarket:
         assert config.max_daily_loss == 200.0
         assert config.max_concurrent_positions == 1
         assert config.dry_run is False
+        assert config.training_mode is False
         assert config.polymarket_live_data_in_dry_run is False
         assert config.binance_live_data_in_dry_run is False
         assert config.log_dir == Path("./custom_logs")
+
+    def test_training_mode_forces_safe_simulation_behavior(self):
+        yaml_content = "\n".join([
+            "operational:",
+            "  dry_run: false",
+            "  training_mode: true",
+            "  polymarket_live_data_in_dry_run: true",
+            "",
+        ])
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            config = ConfigManager.load(Path(f.name))
+
+        os.unlink(f.name)
+        assert config.training_mode is True
+        assert config.dry_run is True
+        assert config.polymarket_live_data_in_dry_run is False
+
+    def test_to_bool_parses_false_string(self):
+        yaml_content = "\n".join([
+            "operational:",
+            "  training_mode: \"false\"",
+            "",
+        ])
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            config = ConfigManager.load(Path(f.name))
+
+        os.unlink(f.name)
+        assert config.training_mode is False
     
     def test_load_with_env_var_substitution(self):
         os.environ['TEST_POLYMARKET_KEY'] = 'my_secret_key'

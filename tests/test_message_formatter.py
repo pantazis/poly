@@ -444,11 +444,15 @@ class TestFormatTradeClosed:
         """Positive PnL should show green emoji."""
         result = MessageFormatter.format_trade_closed(True, "abc-123", 50.0, -20.0, 30.0, 100.0)
         assert "🟢" in result
+        assert "Result" in result
+        assert "WIN" in result
     
     def test_negative_pnl_red_emoji(self):
         """Negative PnL should show red emoji."""
         result = MessageFormatter.format_trade_closed(True, "abc-123", -50.0, -20.0, -70.0, -100.0)
         assert "🔴" in result
+        assert "Result" in result
+        assert "LOSE" in result
     
     def test_handles_none_pnl_values(self):
         """Should handle None PnL values gracefully."""

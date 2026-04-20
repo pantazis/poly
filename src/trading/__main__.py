@@ -24,6 +24,32 @@ from .config import ConfigManager, ConfigValidationError
 logger = logging.getLogger(__name__)
 
 
+def ensure_env_file(env_path: Path = Path(".env")) -> None:
+    """Create a minimal .env file when it does not exist."""
+    if env_path.exists():
+        return
+
+    env_path.write_text(
+        "\n".join(
+            [
+                "# Auto-generated environment file",
+                "# Set values before running in production",
+                "TRAINING_MODE=false",
+                "POLYMARKET_PRIVATE_KEY=",
+                "POLYMARKET_API_KEY=",
+                "POLYMARKET_SECRET=",
+                "POLYMARKET_PASSPHRASE=",
+                "BINANCE_API_KEY=",
+                "BINANCE_API_SECRET=",
+                "TELEGRAM_TOKEN=",
+                "TELEGRAM_CHAT_ID=",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def setup_logging() -> None:
     """Configure logging with timestamp format."""
     logging.basicConfig(
@@ -126,6 +152,7 @@ async def run_bot(config_path: Path) -> None:
 def main() -> None:
     """Main entry point."""
     # Load environment variables from .env file
+    ensure_env_file()
     load_dotenv()
     
     # Fix for aiodns on Windows - needs SelectorEventLoop
